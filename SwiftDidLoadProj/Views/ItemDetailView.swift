@@ -202,17 +202,51 @@ struct ItemDetailView: View {
                     
                     Spacer()
                     
-                    Button(action: {
-                        viewModel.addToCart(item: item)
-                    }) {
-                        Text("Add to cart")
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 14)
-                            .background(AppTheme.Colors.primary)
-                            .cornerRadius(12)
+                    let qty = viewModel.quantityInCart(of: item)
+                    if qty > 0 {
+                        HStack(spacing: 16) {
+                            Button(action: {
+                                viewModel.removeFromCart(item: item)
+                            }) {
+                                Image(systemName: "minus")
+                                    .font(.headline.weight(.bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 40, height: 40)
+                                    .background(AppTheme.Colors.primary)
+                                    .cornerRadius(10)
+                            }
+                            
+                            Text("\(qty)")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .frame(minWidth: 20)
+                                .multilineTextAlignment(.center)
+                            
+                            Button(action: {
+                                viewModel.addToCart(item: item)
+                            }) {
+                                Image(systemName: "plus")
+                                    .font(.headline.weight(.bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 40, height: 40)
+                                    .background(AppTheme.Colors.primary)
+                                    .cornerRadius(10)
+                            }
+                        }
+                    } else {
+                        Button(action: {
+                            viewModel.addToCart(item: item)
+                        }) {
+                            Text("Add to cart")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 14)
+                                .background(AppTheme.Colors.primary)
+                                .cornerRadius(12)
+                        }
                     }
                 }
                 .padding(.horizontal, AppTheme.Spacing.medium)
