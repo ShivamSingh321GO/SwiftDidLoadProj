@@ -11,7 +11,6 @@ actor RecipeExtractionService {
 
     // MARK: - Main Entry Point
 
-    /// Full pipeline: URL → metadata → AI extraction → Recipe
     func extractRecipe(from urlString: String) async throws -> Recipe {
         let pageText = await fetchPageText(from: urlString)
         let recipe = await extractIngredients(from: pageText)
@@ -25,13 +24,10 @@ actor RecipeExtractionService {
               let oembedURL = URL(string: "https://api.instagram.com/oembed?url=\(encodedURL)&format=json") else {
             return "Recipe from: \(urlString)"
         }
-
         do {
             let (data, response) = try await URLSession.shared.data(from: oembedURL)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                return "Recipe from: \(urlString)"
-            }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return "Recipe from: \(urlString)"
             }
             let title = json["title"] as? String ?? ""
@@ -42,27 +38,17 @@ actor RecipeExtractionService {
         }
     }
 
-    // MARK: - Step 2: Extract Ingredients (Foundation Models or heuristic)
+    // MARK: - Step 2: Extract Ingredients
 
     private func extractIngredients(from text: String) async -> Recipe {
+        #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            if let recipe = await tryFoundationModels(text: text) {
+            if let recipe = await FoundationModelsExtractor.extract(from: text) {
                 return recipe
             }
         }
+        #endif
         return heuristicExtraction(from: text)
-    }
-
-    // MARK: - Foundation Models (iOS 26+)
-
-    @available(iOS 26.0, *)
-    private func tryFoundationModels(text: String) async -> Recipe? {
-        guard let _ = NSClassFromString("FoundationModels.LanguageModelSession") else {
-            return nil
-        }
-        // Use dynamic dispatch to avoid import issues in older SDK targets
-        // The actual FoundationModels call is wrapped in the extension file below
-        return await FoundationModelsExtractor.extract(from: text)
     }
 
     // MARK: - Heuristic Fallback
@@ -77,7 +63,7 @@ actor RecipeExtractionService {
                 [("Paneer", ["paneer"]), ("Curd / Dahi", ["curd", "dahi"]), ("Butter", ["butter"]), ("Oil", ["oil"]), ("Salt", ["salt"])]
             ),
             (
-                ["dal makhani", "dal makhni", "dal makhni"],
+                ["dal makhani", "dal makhni"],
                 "Dal Makhani",
                 [("Toor Dal", ["dal", "toor dal"]), ("Butter", ["butter"]), ("Milk", ["milk"]), ("Salt", ["salt"])]
             ),
@@ -115,12 +101,11 @@ actor RecipeExtractionService {
         return AppViewModel.mockRecipe
     }
 
-    // MARK: - Search Term Generation Helper
+    // MARK: - Search Term Generation Helper (used by FoundationModelsService)
 
     static func generateSearchTerms(for ingredient: String) -> [String] {
         let lower = ingredient.lowercased()
         var terms = [lower]
-
         let aliasMap: [String: [String]] = [
             "paneer": ["paneer", "cottage cheese"],
             "curd": ["curd", "dahi"],
@@ -139,26 +124,9 @@ actor RecipeExtractionService {
             "chips": ["chips", "lays"],
             "noodles": ["noodles", "maggi"]
         ]
-
         for (key, aliases) in aliasMap {
-            if lower.contains(key) {
-                terms.append(contentsOf: aliases)
-            }
+            if lower.contains(key) { terms.append(contentsOf: aliases) }
         }
-
         return Array(Set(terms))
-    }
-}
-
-// MARK: - Foundation Models Extractor (iOS 26+ only file)
-// This is a separate enum to cleanly isolate the FoundationModels import
-
-@available(iOS 26.0, *)
-enum FoundationModelsExtractor {
-    static func extract(from text: String) async -> Recipe? {
-        // We use NSClassFromString so the binary still runs on iOS 17/18 without crashing
-        // The full FoundationModels implementation lives in FoundationModelsService.swift
-        // which is conditionally compiled with #if canImport(FoundationModels)
-        return nil // Overridden in FoundationModelsService.swift if available
     }
 }
