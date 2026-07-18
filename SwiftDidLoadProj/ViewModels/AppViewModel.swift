@@ -20,15 +20,122 @@ class AppViewModel {
         }
     }
     
+    // User Authentication state
+    var currentUserSession: UserSession? = nil
+    var isUserLoggedIn: Bool { currentUserSession != nil }
+    
     init() {
         let defaultCart = Cart(name: "General Cart", items: [])
         self.carts = [defaultCart]
         self.selectedCartId = defaultCart.id
+        
+        // Restore session from UserDefaults if exists
+        if let data = UserDefaults.standard.data(forKey: "user_session"),
+           let session = try? JSONDecoder().decode(UserSession.self, from: data) {
+            self.currentUserSession = session
+            SupabaseService.shared.setSession(session)
+            
+            // Map the General Cart's ID deterministically to the user's UUID
+            if let userUuid = UUID(uuidString: session.userId) {
+                self.carts[0].id = userUuid
+                self.selectedCartId = userUuid
+            }
+            
+            // Sync spaces and carts on start in background
+            Task {
+                await self.syncRemoteSpacesOnStart()
+            }
+        }
+    }
+    
+    @MainActor
+    private func syncRemoteSpacesOnStart() async {
+        do {
+            let remoteCarts = try await SupabaseService.shared.fetchSpaces()
+            if !remoteCarts.isEmpty {
+                var updatedCarts = remoteCarts
+                // Make sure the General Cart (which has ID = userUuid) is present
+                if let session = currentUserSession, let userUuid = UUID(uuidString: session.userId) {
+                    if !updatedCarts.contains(where: { $0.id == userUuid }) {
+                        // Create it if it is missing in the remote list
+                        try? await SupabaseService.shared.createSpace(id: userUuid, name: "General Cart")
+                        let localGeneral = carts.first(where: { $0.id == userUuid }) ?? Cart(id: userUuid, name: "General Cart", items: [])
+                        updatedCarts.insert(localGeneral, at: 0)
+                        try? await SupabaseService.shared.syncCartItems(spaceId: userUuid, items: localGeneral.items)
+                    }
+                }
+                self.carts = updatedCarts
+                if let first = updatedCarts.first {
+                    self.selectedCartId = first.id
+                }
+            }
+        } catch {
+            print("Failed to sync remote spaces on launch: \(error.localizedDescription)")
+        }
     }
     
     @MainActor
     func fetchGroceries() async {
         self.items = AppViewModel.staticProducts
+    }
+    
+    // MARK: - Authentication API Helpers
+    
+    @MainActor
+    func loginUser(session: UserSession) async {
+        self.currentUserSession = session
+        SupabaseService.shared.setSession(session)
+        
+        // Save session to UserDefaults for auto-login
+        if let data = try? JSONEncoder().encode(session) {
+            UserDefaults.standard.set(data, forKey: "user_session")
+        }
+        
+        // Map local "General Cart" to use the user's UUID as its ID
+        if let generalIndex = carts.firstIndex(where: { $0.name == "General Cart" }),
+           let userUuid = UUID(uuidString: session.userId) {
+            carts[generalIndex].id = userUuid
+            self.selectedCartId = userUuid
+        }
+        
+        do {
+            let remoteCarts = try await SupabaseService.shared.fetchSpaces()
+            if !remoteCarts.isEmpty {
+                var updatedCarts = remoteCarts
+                if let userUuid = UUID(uuidString: session.userId) {
+                    if !updatedCarts.contains(where: { $0.id == userUuid }) {
+                        // Create General Cart space in cloud
+                        try? await SupabaseService.shared.createSpace(id: userUuid, name: "General Cart")
+                        let localGeneral = carts.first(where: { $0.id == userUuid }) ?? Cart(id: userUuid, name: "General Cart", items: [])
+                        updatedCarts.insert(localGeneral, at: 0)
+                        try? await SupabaseService.shared.syncCartItems(spaceId: userUuid, items: localGeneral.items)
+                    }
+                }
+                self.carts = updatedCarts
+                if let first = updatedCarts.first {
+                    self.selectedCartId = first.id
+                }
+            } else {
+                // Upload existing local spaces to cloud database
+                for cart in carts {
+                    try? await SupabaseService.shared.createSpace(id: cart.id, name: cart.name)
+                    try? await SupabaseService.shared.syncCartItems(spaceId: cart.id, items: cart.items)
+                }
+            }
+        } catch {
+            print("Failed to fetch/sync spaces upon login: \(error.localizedDescription)")
+        }
+    }
+    
+    func logoutUser() {
+        SupabaseService.shared.logOut()
+        self.currentUserSession = nil
+        UserDefaults.standard.removeObject(forKey: "user_session")
+        
+        let defaultCart = Cart(name: "General Cart", items: [])
+        self.carts = [defaultCart]
+        self.selectedCartId = defaultCart.id
+        self.isSpacesEnabled = false
     }
     
     // MARK: - Business Logic
@@ -53,7 +160,11 @@ class AppViewModel {
     func addToCart(item: Item) {
         let targetCartId = isSpacesEnabled ? selectedCartId : (carts.first { $0.name == "General Cart" }?.id ?? selectedCartId)
         if let index = carts.firstIndex(where: { $0.id == targetCartId }) {
-            carts[index].items.append(item)
+            var itemWithUser = item
+            itemWithUser.addedByUserId = currentUserSession?.userId
+            itemWithUser.addedByUserName = currentUserSession?.displayName ?? currentUserSession?.email ?? "You"
+            carts[index].items.append(itemWithUser)
+            syncCartItemsToSupabase(cartId: targetCartId)
         }
     }
     
@@ -62,6 +173,7 @@ class AppViewModel {
         if let index = carts.firstIndex(where: { $0.id == targetCartId }) {
             if let itemIndex = carts[index].items.firstIndex(where: { $0.id == item.id }) {
                 carts[index].items.remove(at: itemIndex)
+                syncCartItemsToSupabase(cartId: targetCartId)
             }
         }
     }
@@ -72,6 +184,24 @@ class AppViewModel {
         carts.append(newCart)
         if makeActive {
             selectedCartId = newCart.id
+        }
+        
+        if isUserLoggedIn {
+            Task {
+                try? await SupabaseService.shared.createSpace(id: newCart.id, name: newCart.name)
+            }
+        }
+    }
+    
+    func shareCart(cartId: UUID, email: String) async throws {
+        try await SupabaseService.shared.shareSpace(spaceId: cartId, withEmail: email)
+    }
+    
+    private func syncCartItemsToSupabase(cartId: UUID) {
+        if isUserLoggedIn, let cart = carts.first(where: { $0.id == cartId }) {
+            Task {
+                try? await SupabaseService.shared.syncCartItems(spaceId: cartId, items: cart.items)
+            }
         }
     }
     

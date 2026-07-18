@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var navigateToCarts = false
     @State private var searchText = ""
     @State private var showingSpaceSelectionSheet = false
+    @State private var showingProfileSheet = false
     
     let columns = [
         GridItem(.flexible(), spacing: AppTheme.Spacing.medium),
@@ -25,96 +26,104 @@ struct ContentView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottom) {
-                VStack(spacing: 0) {
-                    SpacesHeaderView(viewModel: viewModel, showingSpaceSelectionSheet: $showingSpaceSelectionSheet)
-                        .padding(.top, AppTheme.Spacing.small)
-                        .background(Color(.systemBackground))
-                    
-                    CategoriesRowView()
-                        .padding(.vertical, 8)
-                        .background(Color(.systemBackground))
-                    
-                    Divider()
-                    
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
-                            SectionHeaderView()
-                                .padding(.top, AppTheme.Spacing.medium)
-                            
-                            Group {
-                                if viewModel.items.isEmpty {
-                                    HStack {
-                                        Spacer()
-                                        ProgressView("Loading Groceries...")
-                                            .padding(.top, 40)
-                                        Spacer()
-                                    }
-                                } else {
-                                    LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
-                                        ForEach(filteredItems) { item in
-                                            NavigationLink(value: item) {
-                                                ItemCardView(item: item)
-                                                    .environment(viewModel)
+        if viewModel.isUserLoggedIn {
+            NavigationStack {
+                ZStack(alignment: .bottom) {
+                    VStack(spacing: 0) {
+                        SpacesHeaderView(viewModel: viewModel, showingSpaceSelectionSheet: $showingSpaceSelectionSheet)
+                            .padding(.top, AppTheme.Spacing.small)
+                            .background(Color(.systemBackground))
+                        
+                        CategoriesRowView()
+                            .padding(.vertical, 8)
+                            .background(Color(.systemBackground))
+                        
+                        Divider()
+                        
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
+                                SectionHeaderView()
+                                    .padding(.top, AppTheme.Spacing.medium)
+                                
+                                Group {
+                                    if viewModel.items.isEmpty {
+                                        HStack {
+                                            Spacer()
+                                            ProgressView("Loading Groceries...")
+                                                .padding(.top, 40)
+                                            Spacer()
+                                        }
+                                    } else {
+                                        LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
+                                            ForEach(filteredItems) { item in
+                                                NavigationLink(value: item) {
+                                                    ItemCardView(item: item)
+                                                        .environment(viewModel)
+                                                }
+                                                .buttonStyle(.plain)
                                             }
-                                            .buttonStyle(.plain)
                                         }
                                     }
                                 }
+                                .padding(.horizontal, AppTheme.Spacing.medium)
+                                
+                                // Bottom Padding for floating button
+                                Spacer().frame(height: 100)
                             }
-                            .padding(.horizontal, AppTheme.Spacing.medium)
-                            
-                            // Bottom Padding for floating button
-                            Spacer().frame(height: 100)
+                        }
+                    }
+                    .task {
+                        if viewModel.items.isEmpty {
+                            await viewModel.fetchGroceries()
+                        }
+                    }
+                    
+                    // Floating Cart Button
+                    FloatingCartButton(
+                        itemCount: viewModel.activeCartItemsCount,
+                        isSpacesEnabled: viewModel.isSpacesEnabled,
+                        activeSpaceName: viewModel.selectedCart?.name,
+                        onChangeSpace: {
+                            showingSpaceSelectionSheet = true
+                        },
+                        action: {
+                            navigateToCarts = true
+                        }
+                    )
+                }
+                .sheet(isPresented: $showingSpaceSelectionSheet) {
+                    SpaceSelectionSheet(viewModel: viewModel)
+                        .presentationDetents([.medium])
+                        .presentationDragIndicator(.visible)
+                }
+                .sheet(isPresented: $showingProfileSheet) {
+                    UserProfileView(viewModel: viewModel)
+                }
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search for atta, dal, coke and more")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: {
+                            showingProfileSheet = true
+                        }) {
+                            Image(systemName: "person.circle")
+                                .font(.title2)
+                                .foregroundColor(AppTheme.Colors.textPrimary)
                         }
                     }
                 }
-                .task {
-                    if viewModel.items.isEmpty {
-                        await viewModel.fetchGroceries()
-                    }
+                .navigationDestination(isPresented: $navigateToCarts) {
+                    CartDetailView(cartId: viewModel.selectedCartId)
+                        .environment(viewModel)
                 }
-                
-                // Floating Cart Button
-                FloatingCartButton(
-                    itemCount: viewModel.activeCartItemsCount,
-                    isSpacesEnabled: viewModel.isSpacesEnabled,
-                    activeSpaceName: viewModel.selectedCart?.name,
-                    onChangeSpace: {
-                        showingSpaceSelectionSheet = true
-                    },
-                    action: {
-                        navigateToCarts = true
-                    }
-                )
-            }
-            .sheet(isPresented: $showingSpaceSelectionSheet) {
-                SpaceSelectionSheet(viewModel: viewModel)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
-            }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search for atta, dal, coke and more")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: {
-                        // Profile action
-                    }) {
-                        Image(systemName: "person")
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                    }
+                .navigationDestination(for: Item.self) { item in
+                    ItemDetailView(item: item)
+                        .environment(viewModel)
                 }
             }
-            .navigationDestination(isPresented: $navigateToCarts) {
-                CartDetailView(cartId: viewModel.selectedCartId)
-                    .environment(viewModel)
-            }
-            .navigationDestination(for: Item.self) { item in
-                ItemDetailView(item: item)
-                    .environment(viewModel)
-            }
+        } else {
+            LoginView(viewModel: viewModel)
         }
     }
 }
@@ -638,6 +647,107 @@ struct SpaceSelectionSheet: View {
                 .padding(.bottom, 24)
             }
         }
+        .background(Color(.systemBackground))
+    }
+}
+
+struct UserProfileView: View {
+    @Environment(\.dismiss) var dismiss
+    var viewModel: AppViewModel
+    
+    var body: some View {
+        if viewModel.isUserLoggedIn, let session = viewModel.currentUserSession {
+            NavigationStack {
+                VStack(spacing: 24) {
+                    // Profile Header card
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(AppTheme.Colors.primary.opacity(0.1))
+                                .frame(width: 80, height: 80)
+                            
+                            Text(session.displayName?.prefix(1).uppercased() ?? "U")
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.primary)
+                        }
+                        
+                        Text(session.displayName ?? "User")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                        
+                        Text("Supabase Sync Active")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.green)
+                            .clipShape(Capsule())
+                    }
+                    .padding(.top, 20)
+                    
+                    // Profile Info rows
+                    VStack(spacing: 1) {
+                        profileInfoRow(icon: "envelope", label: "Email", value: session.email)
+                        if let phone = session.phone {
+                            profileInfoRow(icon: "phone", label: "Mobile", value: phone)
+                        }
+                    }
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 24)
+                    
+                    Spacer()
+                    
+                    // Logout button
+                    Button(action: {
+                        viewModel.logoutUser()
+                        dismiss()
+                    }) {
+                        Text("Log Out")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(14)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 32)
+                }
+                .navigationTitle("My Account")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Close") {
+                            dismiss()
+                        }
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                }
+            }
+        } else {
+            LoginView(viewModel: viewModel)
+        }
+    }
+    
+    private func profileInfoRow(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .frame(width: 24)
+            
+            Text(label)
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .fontWeight(.medium)
+            
+            Spacer()
+            
+            Text(value)
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .padding(.all, 16)
         .background(Color(.systemBackground))
     }
 }

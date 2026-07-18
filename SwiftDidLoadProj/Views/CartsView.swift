@@ -59,9 +59,18 @@ struct CartDetailView: View {
     @State private var selectedDonation: Int = 0
     @State private var showingCustomDonationAlert = false
     @State private var customDonationText = ""
+    @State private var showingShareSheet = false
+    @State private var showingHistorySheet = false
     
     private var cart: Cart? {
         viewModel.carts.first { $0.id == cartId }
+    }
+    
+    private var isCartOwner: Bool {
+        guard let cart = cart else { return true }
+        guard let session = viewModel.currentUserSession else { return true }
+        guard let createdBy = cart.createdBy else { return true }
+        return createdBy == session.userId
     }
     
     private var groupedItems: [(item: Item, quantity: Int)] {
@@ -150,23 +159,52 @@ struct CartDetailView: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareCartSheet(cartId: cartId, viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingHistorySheet) {
+            if let cart = cart {
+                CartHistorySheet(cart: cart)
+            }
+        }
         .toolbar {
             if let cart = cart {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if viewModel.selectedCartId != cart.id {
-                        Button("Set Active") {
-                            withAnimation {
-                                viewModel.selectedCartId = cart.id
+                    Menu {
+                        if viewModel.selectedCartId != cart.id {
+                            Button(action: {
+                                withAnimation {
+                                    viewModel.selectedCartId = cart.id
+                                }
+                            }) {
+                                Label("Make Active", systemImage: "checkmark.circle")
+                            }
+                        } else {
+                            Button(action: {}) {
+                                Label("Active Cart", systemImage: "checkmark.circle.fill")
+                            }
+                            .disabled(true)
+                        }
+                        
+                        if viewModel.isSpacesEnabled && isCartOwner {
+                            Button(action: {
+                                showingShareSheet = true
+                            }) {
+                                Label("Share Cart", systemImage: "person.badge.plus")
                             }
                         }
-                    } else {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(AppTheme.Colors.primary)
-                            Text("Active")
-                                .font(.subheadline)
-                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        
+                        if viewModel.isSpacesEnabled {
+                            Button(action: {
+                                showingHistorySheet = true
+                            }) {
+                                Label("Cart History", systemImage: "clock.arrow.circlepath")
+                            }
                         }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title2)
+                            .foregroundColor(AppTheme.Colors.textPrimary)
                     }
                 }
             }
@@ -521,24 +559,40 @@ struct CartDetailView: View {
         VStack(spacing: 0) {
             Divider()
             HStack {
-                Button(action: {}) {
-                    HStack {
-                        Text("Select address at next step")
-                            .font(.headline)
-                            .fontWeight(.bold)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .fontWeight(.bold)
+                if isCartOwner {
+                    Button(action: {}) {
+                        HStack {
+                            Text("Select address at next step")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .fontWeight(.bold)
+                        }
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(AppTheme.Colors.primary)
+                        .cornerRadius(12)
                     }
-                    .foregroundColor(.white)
+                } else {
+                    HStack {
+                        Image(systemName: "lock.shield.fill")
+                            .foregroundColor(.orange)
+                        Text("Only the creator of this cart can place orders")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Spacer()
+                    }
                     .padding()
                     .frame(maxWidth: .infinity)
-                    .background(AppTheme.Colors.primary)
+                    .background(Color.orange.opacity(0.08))
                     .cornerRadius(12)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 12)
             }
+            .padding(.horizontal)
+            .padding(.vertical, 12)
             .background(Color(.systemBackground))
         }
     }
@@ -603,6 +657,184 @@ struct CartRowView: View {
     }
 }
 
+struct ShareCartSheet: View {
+    let cartId: UUID
+    var viewModel: AppViewModel
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var email = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    @State private var successMessage: String? = nil
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    Image(systemName: "person.badge.plus.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(AppTheme.Colors.primary)
+                        .padding(.top, 24)
+                    
+                    Text("Share Shopping Space")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Enter the email address of the user you want to invite to this cart. They will be able to view and add items to it.")
+                        .font(.subheadline)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+                
+                if let errorMessage = errorMessage {
+                    Text(errorMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 24)
+                }
+                
+                if let successMessage = successMessage {
+                    Text(successMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 24)
+                }
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("User's Email")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    
+                    TextField("user@example.com", text: $email)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                }
+                .padding(.all, 12)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
+                .padding(.horizontal, 24)
+                
+                Spacer()
+                
+                Button(action: {
+                    Task {
+                        await performShare()
+                    }
+                }) {
+                    ZStack {
+                        if isLoading {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Send Invite")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .background(email.isEmpty ? AppTheme.Colors.primary.opacity(0.6) : AppTheme.Colors.primary)
+                    .cornerRadius(14)
+                }
+                .disabled(email.isEmpty || isLoading)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
+    }
+    
+    private func performShare() async {
+        isLoading = true
+        errorMessage = nil
+        successMessage = nil
+        
+        do {
+            try await viewModel.shareCart(cartId: cartId, email: email)
+            isLoading = false
+            successMessage = "Cart shared successfully!"
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            dismiss()
+        } catch {
+            isLoading = false
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct CartHistorySheet: View {
+    let cart: Cart
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                if cart.items.isEmpty {
+                    Text("No items added yet.")
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                } else {
+                    ForEach(Array(cart.items.enumerated()), id: \.offset) { index, item in
+                        HStack(spacing: 12) {
+                            // Mini Thumbnail
+                            if !item.image.isEmpty {
+                                Image(item.image)
+                                    .resizable()
+                                    .frame(width: 40, height: 40)
+                                    .cornerRadius(8)
+                            } else {
+                                CachedAsyncImage(url: item.imageURL) { img in
+                                    img
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    ProgressView()
+                                }
+                                .frame(width: 40, height: 40)
+                                .cornerRadius(8)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.name)
+                                    .font(.headline)
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person.circle.fill")
+                                        .font(.caption)
+                                        .foregroundColor(AppTheme.Colors.primary)
+                                    Text("Added by \(item.addedByUserName ?? "Owner")")
+                                        .font(.caption)
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("Cart History")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
+    }
+}
 
 #Preview {
     NavigationView {

@@ -19,6 +19,10 @@ struct Item: Identifiable, Hashable {
     let ratingCount: String?
     let aliases: [String]?
     
+    // Sharing History Fields
+    var addedByUserId: String? = nil
+    var addedByUserName: String? = nil
+    
     init(id: String = UUID().uuidString,
          name: String,
          price: Int,
@@ -32,7 +36,9 @@ struct Item: Identifiable, Hashable {
          subCategory: String? = nil,
          rating: Double? = nil,
          ratingCount: String? = nil,
-         aliases: [String]? = nil) {
+         aliases: [String]? = nil,
+         addedByUserId: String? = nil,
+         addedByUserName: String? = nil) {
         self.id = id
         self.name = name
         self.price = price
@@ -47,11 +53,29 @@ struct Item: Identifiable, Hashable {
         self.rating = rating
         self.ratingCount = ratingCount
         self.aliases = aliases
+        self.addedByUserId = addedByUserId
+        self.addedByUserName = addedByUserName
     }
 }
 
 struct Cart: Identifiable, Hashable {
-    let id = UUID()
+    var id = UUID()
     var name: String
     var items: [Item] = []
+    var createdBy: String? = nil
+}
+
+struct Profile: Codable, Hashable {
+    let id: String
+    let email: String
+    let displayName: String?
+    let phone: String?
+}
+
+struct UserSession: Codable, Hashable {
+    let accessToken: String
+    let userId: String
+    let email: String
+    let phone: String?
+    let displayName: String?
 }
