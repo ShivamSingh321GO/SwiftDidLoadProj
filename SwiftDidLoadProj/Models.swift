@@ -3,13 +3,23 @@ import SwiftUI
 import Observation
 
 struct Item: Identifiable, Hashable {
-    let id = UUID()
+    let id: String
     let name: String
     let price: Int
     let originalPrice: Int?
     let weight: String
     let discount: String?
-    let imageName: String
+    let imageURL: URL?
+    
+    init(id: String = UUID().uuidString, name: String, price: Int, originalPrice: Int? = nil, weight: String, discount: String? = nil, imageURL: URL? = nil) {
+        self.id = id
+        self.name = name
+        self.price = price
+        self.originalPrice = originalPrice
+        self.weight = weight
+        self.discount = discount
+        self.imageURL = imageURL
+    }
 }
 
 struct Space: Identifiable, Hashable {
@@ -25,14 +35,28 @@ class AppViewModel {
     ]
     var currentCart: [Item] = []
     
-    // Dummy Data
-    static let sampleItems = [
-        Item(name: "Maggi Masala - 2 Minutes Instant Noodles", price: 60, originalPrice: nil, weight: "300 g", discount: nil, imageName: "carrot"),
-        Item(name: "Maggi 2 Minutes Instant Noodles Made With...", price: 79, originalPrice: 90, weight: "420 g", discount: "12% OFF on MRP", imageName: "carrot"),
-        Item(name: "Maggi 2 - Minute Instant Noodles Mega Pack", price: 162, originalPrice: 180, weight: "900 g", discount: "10% OFF on MRP", imageName: "carrot"),
-        Item(name: "Yippee Magic Masala Noodles", price: 56, originalPrice: 60, weight: "290.4 g", discount: "6% OFF on MRP", imageName: "carrot"),
-        Item(name: "Maggi Veg Atta Noodles", price: 98, originalPrice: 108, weight: "290 g", discount: nil, imageName: "carrot")
-    ]
+    var items: [Item] = []
+    
+    @MainActor
+    func fetchGroceries() async {
+        do {
+            let products = try await APIService.shared.fetchGroceries()
+            self.items = products.map { product in
+                // Generate a random price since OFF doesn't provide one
+                let randomPrice = Int.random(in: 40...200)
+                
+                return Item(
+                    id: product.id,
+                    name: product.productName ?? "Unknown Product",
+                    price: randomPrice,
+                    weight: product.quantity ?? "N/A",
+                    imageURL: URL(string: product.imageFrontSmallUrl ?? "")
+                )
+            }
+        } catch {
+            print("Failed to fetch groceries: \(error)")
+        }
+    }
     
     // MARK: - Business Logic
     

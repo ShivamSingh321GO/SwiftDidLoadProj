@@ -22,16 +22,35 @@ struct ContentView: View {
                         
                         SectionHeaderView()
                         
-                        LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
-                            ForEach(AppViewModel.sampleItems) { item in
-                                ItemCardView(item: item)
-                                    .environment(viewModel)
+                        Group {
+                            if viewModel.items.isEmpty {
+                                HStack {
+                                    Spacer()
+                                    ProgressView("Loading Groceries...")
+                                        .padding(.top, 40)
+                                    Spacer()
+                                }
+                            } else {
+                                LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
+                                    ForEach(viewModel.items) { item in
+                                        NavigationLink(value: item) {
+                                            ItemCardView(item: item)
+                                                .environment(viewModel)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, AppTheme.Spacing.medium)
                         
                         // Bottom Padding for floating button
                         Spacer().frame(height: 100)
+                    }
+                }
+                .task {
+                    if viewModel.items.isEmpty {
+                        await viewModel.fetchGroceries()
                     }
                 }
                 
@@ -55,6 +74,10 @@ struct ContentView: View {
             }
             .navigationDestination(isPresented: $navigateToSpaces) {
                 SpacesView()
+                    .environment(viewModel)
+            }
+            .navigationDestination(for: Item.self) { item in
+                ItemDetailView(item: item)
                     .environment(viewModel)
             }
         }
@@ -146,9 +169,23 @@ struct ItemCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Image Box with overlays
-            RoundedRectangle(cornerRadius: AppTheme.Spacing.cornerRadius)
-                .fill(AppTheme.Colors.secondaryBackground)
-                .frame(height: 110)
+            ZStack {
+                RoundedRectangle(cornerRadius: AppTheme.Spacing.cornerRadius)
+                    .fill(AppTheme.Colors.secondaryBackground)
+                
+                if let url = item.imageURL {
+                    CachedAsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    } placeholder: {
+                        ProgressView()
+                    }
+                    .padding(8)
+                }
+            }
+            .frame(height: 110)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Spacing.cornerRadius))
                 .overlay(alignment: .topTrailing) {
                     Image(systemName: "heart")
                         .foregroundColor(AppTheme.Colors.textSecondary)
