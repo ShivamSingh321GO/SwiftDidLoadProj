@@ -4,8 +4,6 @@ struct ContentView: View {
     @State private var viewModel = AppViewModel()
     @State private var navigateToCarts = false
     @State private var searchText = ""
-    @State private var showingCreateSpace = false
-    @State private var newSpaceName = ""
     @State private var showingSpaceSelectionSheet = false
     
     let columns = [
@@ -29,41 +27,47 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
-                        SpacesHeaderView(viewModel: viewModel, showingSpaceSelectionSheet: $showingSpaceSelectionSheet)
-                            .padding(.top, AppTheme.Spacing.small)
-                        
-                        CategoriesRowView()
-                        
-                        Divider()
-                        
-                        SectionHeaderView()
-                        
-                        Group {
-                            if viewModel.items.isEmpty {
-                                HStack {
-                                    Spacer()
-                                    ProgressView("Loading Groceries...")
-                                        .padding(.top, 40)
-                                    Spacer()
-                                }
-                            } else {
-                                LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
-                                    ForEach(filteredItems) { item in
-                                        NavigationLink(value: item) {
-                                            ItemCardView(item: item)
-                                                .environment(viewModel)
+                VStack(spacing: 0) {
+                    SpacesHeaderView(viewModel: viewModel, showingSpaceSelectionSheet: $showingSpaceSelectionSheet)
+                        .padding(.top, AppTheme.Spacing.small)
+                        .background(Color(.systemBackground))
+                    
+                    CategoriesRowView()
+                        .padding(.vertical, 8)
+                        .background(Color(.systemBackground))
+                    
+                    Divider()
+                    
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
+                            SectionHeaderView()
+                                .padding(.top, AppTheme.Spacing.medium)
+                            
+                            Group {
+                                if viewModel.items.isEmpty {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView("Loading Groceries...")
+                                            .padding(.top, 40)
+                                        Spacer()
+                                    }
+                                } else {
+                                    LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
+                                        ForEach(filteredItems) { item in
+                                            NavigationLink(value: item) {
+                                                ItemCardView(item: item)
+                                                    .environment(viewModel)
+                                            }
+                                            .buttonStyle(.plain)
                                         }
-                                        .buttonStyle(.plain)
                                     }
                                 }
                             }
+                            .padding(.horizontal, AppTheme.Spacing.medium)
+                            
+                            // Bottom Padding for floating button
+                            Spacer().frame(height: 100)
                         }
-                        .padding(.horizontal, AppTheme.Spacing.medium)
-                        
-                        // Bottom Padding for floating button
-                        Spacer().frame(height: 100)
                     }
                 }
                 .task {
@@ -85,24 +89,8 @@ struct ContentView: View {
                     }
                 )
             }
-            .alert("Create New Space", isPresented: $showingCreateSpace) {
-                TextField("Space Name", text: $newSpaceName)
-                Button("Cancel", role: .cancel) {
-                    newSpaceName = ""
-                }
-                Button("Create") {
-                    if !newSpaceName.isEmpty {
-                        withAnimation {
-                            viewModel.createCart(name: newSpaceName, makeActive: true)
-                        }
-                    }
-                    newSpaceName = ""
-                }
-            } message: {
-                Text("Enter a name for your new space.")
-            }
             .sheet(isPresented: $showingSpaceSelectionSheet) {
-                SpaceSelectionSheet(viewModel: viewModel, showingCreateSpace: $showingCreateSpace)
+                SpaceSelectionSheet(viewModel: viewModel)
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
             }
@@ -136,12 +124,17 @@ struct ContentView: View {
 
 struct CategoriesRowView: View {
     var body: some View {
-        HStack(spacing: AppTheme.Spacing.large) {
+        HStack(spacing: 0) {
             CategoryItem(icon: "bag.fill", title: "All")
+                .frame(maxWidth: .infinity)
             CategoryItem(icon: "umbrella.fill", title: "Monsoon")
+                .frame(maxWidth: .infinity)
             CategoryItem(icon: "headphones", title: "Electronics")
+                .frame(maxWidth: .infinity)
             CategoryItem(icon: "sparkles", title: "Beauty")
+                .frame(maxWidth: .infinity)
             CategoryItem(icon: "lamp.table.fill", title: "Decor")
+                .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, AppTheme.Spacing.medium)
     }
@@ -232,13 +225,16 @@ struct CategoryItem: View {
     let title: String
     
     var body: some View {
-        VStack {
+        VStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundColor(AppTheme.Colors.textPrimary)
+                .frame(height: 28)
             Text(title)
                 .font(.caption)
                 .foregroundColor(AppTheme.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
     }
 }
@@ -447,74 +443,202 @@ struct SpacesHeaderView: View {
 struct SpaceSelectionSheet: View {
     @Environment(\.dismiss) var dismiss
     var viewModel: AppViewModel
-    @Binding var showingCreateSpace: Bool
+    
+    @State private var isCreatingNewSpace = false
+    @State private var newSpaceName = ""
     
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(viewModel.carts) { cart in
-                    Button(action: {
-                        withAnimation {
-                            viewModel.selectedCartId = cart.id
-                        }
-                        dismiss()
-                    }) {
-                        HStack(spacing: AppTheme.Spacing.medium) {
-                            Image(systemName: "cart.fill")
-                                .foregroundColor(viewModel.selectedCartId == cart.id ? AppTheme.Colors.primary : AppTheme.Colors.textSecondary)
-                                .imageScale(.large)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(cart.name)
-                                    .font(.headline)
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                                Text("\(cart.items.count) items")
-                                    .font(.subheadline)
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                            }
-                            
-                            Spacer()
-                            
-                            if viewModel.selectedCartId == cart.id {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(AppTheme.Colors.primary)
-                                    .font(.title3)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.plain)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Shopping Spaces")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
                 
-                Button(action: {
-                    dismiss()
-                    // Delay slightly to allow the sheet dismiss animation to finish before showing the alert
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        showingCreateSpace = true
-                    }
-                }) {
-                    HStack(spacing: AppTheme.Spacing.medium) {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(AppTheme.Colors.primary)
-                            .imageScale(.large)
-                        
-                        Text("Create New Space")
-                            .font(.headline)
-                            .foregroundColor(AppTheme.Colors.primary)
-                    }
-                    .padding(.vertical, 4)
-                }
+                Text("Choose a space to view or organize your shopping list")
+                    .font(.subheadline)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
             }
-            .navigationTitle("Select Space")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close") {
-                        dismiss()
+            .padding(.horizontal, 24)
+            .padding(.top, 28)
+            .padding(.bottom, 16)
+            
+            // Scrollable list of Spaces
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(viewModel.carts) { cart in
+                        let isSelected = viewModel.selectedCartId == cart.id
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                viewModel.selectedCartId = cart.id
+                            }
+                            dismiss()
+                        }) {
+                            HStack(spacing: 16) {
+                                // Icon container
+                                ZStack {
+                                    Circle()
+                                        .fill(isSelected ? AppTheme.Colors.primary.opacity(0.15) : Color(.systemGray6))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: isSelected ? "cart.fill" : "cart")
+                                        .foregroundColor(isSelected ? AppTheme.Colors.primary : AppTheme.Colors.textSecondary)
+                                        .font(.system(size: 18, weight: .semibold))
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(cart.name)
+                                        .font(.headline)
+                                        .foregroundColor(isSelected ? AppTheme.Colors.primary : AppTheme.Colors.textPrimary)
+                                        .fontWeight(isSelected ? .bold : .semibold)
+                                    
+                                    Text("\(cart.items.count) items")
+                                        .font(.caption)
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                }
+                                
+                                Spacer()
+                                
+                                if isSelected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(AppTheme.Colors.primary)
+                                        .font(.title2)
+                                        .transition(.scale.combined(with: .opacity))
+                                } else {
+                                    Circle()
+                                        .stroke(Color(.systemGray4), lineWidth: 1)
+                                        .frame(width: 22, height: 22)
+                                }
+                            }
+                            .padding(.all, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(isSelected ? AppTheme.Colors.primary.opacity(0.04) : Color(.secondarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(isSelected ? AppTheme.Colors.primary.opacity(0.3) : Color.clear, lineWidth: 1.5)
+                            )
+                            .shadow(color: isSelected ? AppTheme.Colors.primary.opacity(0.05) : Color.clear, radius: 8, x: 0, y: 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    if isCreatingNewSpace {
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "pencil")
+                                    .foregroundColor(AppTheme.Colors.primary)
+                                    .font(.headline)
+                                
+                                TextField("Enter space name...", text: $newSpaceName)
+                                    .font(.body)
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                    .textFieldStyle(.plain)
+                            }
+                            .padding(.all, 14)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                            
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        isCreatingNewSpace = false
+                                        newSpaceName = ""
+                                    }
+                                }) {
+                                    Text("Cancel")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Button(action: {
+                                    if !newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        withAnimation {
+                                            viewModel.createCart(name: newSpaceName, makeActive: true)
+                                        }
+                                        newSpaceName = ""
+                                        isCreatingNewSpace = false
+                                        dismiss()
+                                    }
+                                }) {
+                                    Text("Create")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .background(newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppTheme.Colors.primary.opacity(0.5) : AppTheme.Colors.primary)
+                                        .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
+                        .padding(.all, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemBackground))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(AppTheme.Colors.primary.opacity(0.3), lineWidth: 1.5)
+                        )
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                    } else {
+                        // Create New Space Card
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isCreatingNewSpace = true
+                            }
+                        }) {
+                            HStack(spacing: 16) {
+                                ZStack {
+                                    Circle()
+                                        .fill(AppTheme.Colors.primary.opacity(0.1))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: "plus")
+                                        .foregroundColor(AppTheme.Colors.primary)
+                                        .font(.system(size: 18, weight: .bold))
+                                }
+                                
+                                Text("Create New Space")
+                                    .font(.headline)
+                                    .foregroundColor(AppTheme.Colors.primary)
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(AppTheme.Colors.primary.opacity(0.7))
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                            .padding(.all, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .strokeBorder(
+                                        AppTheme.Colors.primary.opacity(0.3),
+                                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, dash: [5, 4])
+                                    )
+                                    .background(Color(.systemBackground))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
+                        .transition(.opacity)
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
         }
+        .background(Color(.systemBackground))
     }
 }
 

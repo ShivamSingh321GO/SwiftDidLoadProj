@@ -8,8 +8,6 @@ struct ItemDetailView: View {
     @State private var showDetailsSheet = false
     @State private var navigateToCarts = false
     @State private var showingSpaceSelectionSheet = false
-    @State private var showingCreateSpace = false
-    @State private var newSpaceName = ""
     
     @State private var selectedUnitIndex = 0
     
@@ -345,25 +343,9 @@ struct ItemDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSpaceSelectionSheet) {
-            SpaceSelectionSheet(viewModel: viewModel, showingCreateSpace: $showingCreateSpace)
+            SpaceSelectionSheet(viewModel: viewModel)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
-        }
-        .alert("Create New Space", isPresented: $showingCreateSpace) {
-            TextField("Space Name", text: $newSpaceName)
-            Button("Cancel", role: .cancel) {
-                newSpaceName = ""
-            }
-            Button("Create") {
-                if !newSpaceName.isEmpty {
-                    withAnimation {
-                        viewModel.createCart(name: newSpaceName, makeActive: true)
-                    }
-                }
-                newSpaceName = ""
-            }
-        } message: {
-            Text("Enter a name for your new space.")
         }
         .navigationDestination(isPresented: $navigateToCarts) {
             CartDetailView(cartId: viewModel.selectedCartId)
