@@ -12,7 +12,13 @@ struct KeyInformationSheet: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                if let url = item.imageURL {
+                if !item.image.isEmpty {
+                    Image(item.image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 40, height: 40)
+                        .cornerRadius(8)
+                } else if let url = item.imageURL {
                     CachedAsyncImage(url: url) { image in
                         image.resizable().scaledToFit()
                     } placeholder: {
