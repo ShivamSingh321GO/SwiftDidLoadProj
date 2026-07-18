@@ -14,6 +14,18 @@ struct ContentView: View {
         GridItem(.flexible(), spacing: AppTheme.Spacing.medium)
     ]
     
+    var filteredItems: [Item] {
+        if searchText.isEmpty {
+            return viewModel.items
+        } else {
+            return viewModel.items.filter { item in
+                item.name.localizedCaseInsensitiveContains(searchText) ||
+                (item.brand ?? "").localizedCaseInsensitiveContains(searchText) ||
+                (item.aliases ?? []).contains(where: { $0.localizedCaseInsensitiveContains(searchText) })
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
@@ -38,7 +50,7 @@ struct ContentView: View {
                                 }
                             } else {
                                 LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
-                                    ForEach(viewModel.items) { item in
+                                    ForEach(filteredItems) { item in
                                         NavigationLink(value: item) {
                                             ItemCardView(item: item)
                                                 .environment(viewModel)
