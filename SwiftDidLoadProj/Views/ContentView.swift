@@ -254,7 +254,12 @@ struct ItemCardView: View {
                 RoundedRectangle(cornerRadius: AppTheme.Spacing.cornerRadius)
                     .fill(AppTheme.Colors.secondaryBackground)
                 
-                if let url = item.imageURL {
+                if !item.image.isEmpty {
+                    Image(item.image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
+                } else if let url = item.imageURL {
                     CachedAsyncImage(url: url) { image in
                         image
                             .resizable()

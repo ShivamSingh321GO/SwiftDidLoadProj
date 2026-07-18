@@ -9,6 +9,7 @@ struct Item: Identifiable, Hashable {
     let weight: String
     let discount: String?
     let imageURL: URL?
+    let image: String
     
     // New fields from JSON
     let brand: String?
@@ -25,6 +26,7 @@ struct Item: Identifiable, Hashable {
          weight: String,
          discount: String? = nil,
          imageURL: URL? = nil,
+         image: String = "",
          brand: String? = nil,
          category: String? = nil,
          subCategory: String? = nil,
@@ -38,6 +40,7 @@ struct Item: Identifiable, Hashable {
         self.weight = weight
         self.discount = discount
         self.imageURL = imageURL
+        self.image = image
         self.brand = brand
         self.category = category
         self.subCategory = subCategory

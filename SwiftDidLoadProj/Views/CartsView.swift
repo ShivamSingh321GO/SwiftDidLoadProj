@@ -241,7 +241,12 @@ struct CartDetailView: View {
                         RoundedRectangle(cornerRadius: AppTheme.Spacing.smallCornerRadius)
                             .fill(AppTheme.Colors.secondaryBackground)
                         
-                        if let url = item.imageURL {
+                        if !item.image.isEmpty {
+                            Image(item.image)
+                                .resizable()
+                                .scaledToFit()
+                                .padding(4)
+                        } else if let url = item.imageURL {
                             CachedAsyncImage(url: url) { image in
                                 image
                                     .resizable()

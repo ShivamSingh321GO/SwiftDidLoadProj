@@ -63,7 +63,13 @@ struct ItemDetailView: View {
                             .fill(Color(white: 0.95))
                             .frame(height: 350)
                         
-                        if let url = item.imageURL {
+                        if !item.image.isEmpty {
+                            Image(item.image)
+                                .resizable()
+                                .scaledToFit()
+                                .padding(40)
+                                .frame(height: 350)
+                        } else if let url = item.imageURL {
                             CachedAsyncImage(url: url) { image in
                                 image
                                     .resizable()
