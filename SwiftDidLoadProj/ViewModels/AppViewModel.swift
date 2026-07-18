@@ -232,4 +232,30 @@ class AppViewModel {
         Item(id: "24", name: "Dove Cream Beauty Bathing Bar", price: 55, originalPrice: 65, weight: "125 g", discount: "15% OFF", image: "Dove-bar", brand: "Dove", category: "Personal Care", subCategory: "Soap", rating: 4.8, ratingCount: "14.2K", aliases: ["soap", "dove"]),
         Item(id: "25", name: "Tata Salt", price: 30, originalPrice: 34, weight: "1 kg", discount: "12% OFF", image: "Salt", brand: "Tata", category: "Masala & Spices", subCategory: "Salt", rating: 4.9, ratingCount: "27.5K", aliases: ["salt", "tata salt"])
     ]
+    
+    // MARK: - Recipe to Blinkit Demo Data
+    
+    static let mockRecipe = Recipe(
+        name: "Paneer Tikka Masala",
+        ingredients: [
+            RecipeIngredient(genericName: "Paneer", searchTerms: ["paneer"]),
+            RecipeIngredient(genericName: "Curd", searchTerms: ["curd", "dahi"]),
+            RecipeIngredient(genericName: "Oil or Butter", searchTerms: ["oil", "butter"]),
+            RecipeIngredient(genericName: "Salt", searchTerms: ["salt"]),
+            RecipeIngredient(genericName: "Masala / Spices", searchTerms: ["masala", "bhujia"]) // using bhujia to show we can match multiple items if needed for demo
+        ]
+    )
+    
+    func products(for ingredient: RecipeIngredient) -> [Item] {
+        return AppViewModel.staticProducts.filter { product in
+            // Return true if any search term is found in product aliases, name, or subCategory
+            for term in ingredient.searchTerms {
+                if product.name.lowercased().contains(term.lowercased()) { return true }
+                if let category = product.category, category.lowercased().contains(term.lowercased()) { return true }
+                if let sub = product.subCategory, sub.lowercased().contains(term.lowercased()) { return true }
+                if let aliases = product.aliases, aliases.contains(where: { $0.lowercased().contains(term.lowercased()) }) { return true }
+            }
+            return false
+        }
+    }
 }

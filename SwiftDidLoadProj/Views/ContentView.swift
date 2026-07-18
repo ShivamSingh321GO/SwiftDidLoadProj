@@ -6,6 +6,11 @@ struct ContentView: View {
     @State private var searchText = ""
     @State private var showingSpaceSelectionSheet = false
     @State private var showingProfileSheet = false
+    @State private var showRecipeAnalyzing = false
+    @State private var showRecipeShopping = false
+    @State private var pendingRecipeShopping = false
+    @State private var extractedRecipe: Recipe = AppViewModel.mockRecipe
+    @State private var sharedReelURL: String = ""
     
     let columns = [
         GridItem(.flexible(), spacing: AppTheme.Spacing.medium),
@@ -42,6 +47,31 @@ struct ContentView: View {
                         
                         ScrollView {
                             VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
+                                // Try Recipe to Blinkit Banner
+                                Button(action: {
+                                    showRecipeAnalyzing = true
+                                }) {
+                                    HStack {
+                                        Image(systemName: "wand.and.stars")
+                                            .font(.title2)
+                                        VStack(alignment: .leading) {
+                                            Text("Try Recipe to Blinkit")
+                                                .font(.headline)
+                                                .fontWeight(.bold)
+                                            Text("Simulate sharing a recipe reel from Instagram")
+                                                .font(.caption)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(LinearGradient(colors: [AppTheme.Colors.primary, Color.purple], startPoint: .leading, endPoint: .trailing))
+                                    .cornerRadius(12)
+                                }
+                                .padding(.horizontal, AppTheme.Spacing.medium)
+                                .padding(.top, AppTheme.Spacing.medium)
+                                
                                 SectionHeaderView()
                                     .padding(.top, AppTheme.Spacing.medium)
                                 
@@ -91,7 +121,14 @@ struct ContentView: View {
                         }
                     )
                 }
-                .sheet(isPresented: $showingSpaceSelectionSheet) {
+                .sheet(isPresented: $showingSpaceSelectionSheet, onDismiss: {
+                    if pendingRecipeShopping {
+                        pendingRecipeShopping = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showRecipeShopping = true
+                        }
+                    }
+                }) {
                     SpaceSelectionSheet(viewModel: viewModel)
                         .presentationDetents([.medium])
                         .presentationDragIndicator(.visible)
@@ -120,6 +157,33 @@ struct ContentView: View {
                 .navigationDestination(for: Item.self) { item in
                     ItemDetailView(item: item)
                         .environment(viewModel)
+                }
+                .navigationDestination(isPresented: $showRecipeShopping) {
+                    RecipeShoppingView(recipe: extractedRecipe)
+                        .environment(viewModel)
+                }
+            }
+            .fullScreenCover(isPresented: $showRecipeAnalyzing) {
+                RecipeAnalyzingView(
+                    isPresented: $showRecipeAnalyzing,
+                    onRecipeExtracted: { recipe in
+                        extractedRecipe = recipe
+                        // Show space selection first, then navigate to recipe view
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            pendingRecipeShopping = true
+                            showingSpaceSelectionSheet = true
+                        }
+                    },
+                    sharedURL: sharedReelURL
+                )
+            }
+            .onOpenURL { url in
+                if url.scheme == "blinkit" && url.host == "recipe" {
+                    // Read the URL saved by the Share Extension
+                    let appGroupName = "group.galgotiasUni.SwiftDidLoadProj.share"
+                    let savedURL = UserDefaults(suiteName: appGroupName)?.string(forKey: "sharedRecipeURL") ?? ""
+                    sharedReelURL = savedURL
+                    showRecipeAnalyzing = true
                 }
             }
         } else {
@@ -753,6 +817,9 @@ struct UserProfileView: View {
 }
 
 
+#Preview {
+    ContentView()
+}
 #Preview {
     ContentView()
 }

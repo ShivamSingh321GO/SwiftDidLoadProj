@@ -6,20 +6,84 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B332BE86300C2B7800F17363 /* BlinkitShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B332BE7C300C2B7800F17363 /* BlinkitShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B332BE84300C2B7800F17363 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B332BE05300B9D6700F17363 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B332BE7B300C2B7800F17363;
+			remoteInfo = BlinkitShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B332BE8B300C2B7800F17363 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B332BE86300C2B7800F17363 /* BlinkitShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B332BE0D300B9D6700F17363 /* SwiftDidLoadProj.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftDidLoadProj.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B332BE7C300C2B7800F17363 /* BlinkitShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BlinkitShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B332BE87300C2B7800F17363 /* Exceptions for "BlinkitShare" folder in "BlinkitShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B332BE7B300C2B7800F17363 /* BlinkitShare */;
+		};
+		B332BE8E300C2D2E00F17363 /* Exceptions for "SwiftDidLoadProj" folder in "SwiftDidLoadProj" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B332BE0C300B9D6700F17363 /* SwiftDidLoadProj */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B332BE0F300B9D6700F17363 /* SwiftDidLoadProj */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B332BE8E300C2D2E00F17363 /* Exceptions for "SwiftDidLoadProj" folder in "SwiftDidLoadProj" target */,
+			);
 			path = SwiftDidLoadProj;
+			sourceTree = "<group>";
+		};
+		B332BE7D300C2B7800F17363 /* BlinkitShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B332BE87300C2B7800F17363 /* Exceptions for "BlinkitShare" folder in "BlinkitShare" target */,
+			);
+			path = BlinkitShare;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		B332BE0A300B9D6700F17363 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B332BE79300C2B7800F17363 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				B332BE0F300B9D6700F17363 /* SwiftDidLoadProj */,
+				B332BE7D300C2B7800F17363 /* BlinkitShare */,
 				B332BE0E300B9D6700F17363 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				B332BE0D300B9D6700F17363 /* SwiftDidLoadProj.app */,
+				B332BE7C300C2B7800F17363 /* BlinkitShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -55,10 +121,12 @@
 				B332BE09300B9D6700F17363 /* Sources */,
 				B332BE0A300B9D6700F17363 /* Frameworks */,
 				B332BE0B300B9D6700F17363 /* Resources */,
+				B332BE8B300C2B7800F17363 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B332BE85300C2B7800F17363 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B332BE0F300B9D6700F17363 /* SwiftDidLoadProj */,
@@ -69,6 +137,28 @@
 			productName = SwiftDidLoadProj;
 			productReference = B332BE0D300B9D6700F17363 /* SwiftDidLoadProj.app */;
 			productType = "com.apple.product-type.application";
+		};
+		B332BE7B300C2B7800F17363 /* BlinkitShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B332BE88300C2B7800F17363 /* Build configuration list for PBXNativeTarget "BlinkitShare" */;
+			buildPhases = (
+				B332BE78300C2B7800F17363 /* Sources */,
+				B332BE79300C2B7800F17363 /* Frameworks */,
+				B332BE7A300C2B7800F17363 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B332BE7D300C2B7800F17363 /* BlinkitShare */,
+			);
+			name = BlinkitShare;
+			packageProductDependencies = (
+			);
+			productName = BlinkitShare;
+			productReference = B332BE7C300C2B7800F17363 /* BlinkitShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -81,6 +171,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					B332BE0C300B9D6700F17363 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					B332BE7B300C2B7800F17363 = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
@@ -100,12 +193,20 @@
 			projectRoot = "";
 			targets = (
 				B332BE0C300B9D6700F17363 /* SwiftDidLoadProj */,
+				B332BE7B300C2B7800F17363 /* BlinkitShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B332BE0B300B9D6700F17363 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B332BE7A300C2B7800F17363 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +223,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B332BE78300C2B7800F17363 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B332BE85300C2B7800F17363 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B332BE7B300C2B7800F17363 /* BlinkitShare */;
+			targetProxy = B332BE84300C2B7800F17363 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B332BE16300B9D6900F17363 /* Debug */ = {
@@ -251,11 +367,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SwiftDidLoadProj/SwiftDidLoadProj.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2YFM37G4FG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftDidLoadProj/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -283,11 +401,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SwiftDidLoadProj/SwiftDidLoadProj.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2YFM37G4FG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftDidLoadProj/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -303,6 +423,62 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B332BE89300C2B7800F17363 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2YFM37G4FG;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BlinkitShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BlinkitShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = galgotiasUni.SwiftDidLoadProj.BlinkitShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B332BE8A300C2B7800F17363 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2YFM37G4FG;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BlinkitShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BlinkitShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = galgotiasUni.SwiftDidLoadProj.BlinkitShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -327,6 +503,15 @@
 			buildConfigurations = (
 				B332BE19300B9D6900F17363 /* Debug */,
 				B332BE1A300B9D6900F17363 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B332BE88300C2B7800F17363 /* Build configuration list for PBXNativeTarget "BlinkitShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B332BE89300C2B7800F17363 /* Debug */,
+				B332BE8A300C2B7800F17363 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

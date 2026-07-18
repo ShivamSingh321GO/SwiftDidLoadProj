@@ -79,3 +79,15 @@ struct UserSession: Codable, Hashable {
     let phone: String?
     let displayName: String?
 }
+
+struct RecipeIngredient: Identifiable, Hashable {
+    let id = UUID()
+    let genericName: String
+    let searchTerms: [String]
+}
+
+struct Recipe: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let ingredients: [RecipeIngredient]
+}
