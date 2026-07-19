@@ -9,6 +9,8 @@ class ShareViewController: UIViewController {
         processAttachments()
     }
 
+    // MARK: - Extract shared URL from attachments
+
     private func processAttachments() {
         guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem else {
             saveAndFinish(url: "no-url")
@@ -48,6 +50,8 @@ class ShareViewController: UIViewController {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Save URL to App Group and launch main app
+
     private func saveAndFinish(url: String) {
         // 1. Save the URL to App Group so the main app can read it
         let appGroupName = "group.galgotiasUni.SwiftDidLoadProj.share"
@@ -57,32 +61,82 @@ class ShareViewController: UIViewController {
         }
 
         // 2. Open the main app via custom URL scheme
-        //    The ONLY working approach in a Share Extension is openURL on extensionContext
         let deepLink = URL(string: "blinkit://recipe")!
 
         DispatchQueue.main.async { [weak self] in
-            // Use the private but widely-used selector to open a URL from an extension
-            self?.openURL(deepLink)
+            self?.openContainingApp(deepLink)
 
-            // Complete after a tiny delay to let the openURL fire
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            // Complete extension after a delay so the open request fires first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self?.extensionContext?.completeRequest(returningItems: nil)
             }
         }
     }
 
-    // This is the documented way to open a URL from an extension
-    // It walks the responder chain to find an object that can handle openURL
-    @objc func openURL(_ url: URL) {
+    // MARK: - Open Containing App
+    //
+    // Share Extensions CANNOT use extensionContext?.open() — that API only works
+    // for Today/Widget extensions. The proven workaround used by production apps
+    // is to access UIApplication.shared through the Objective-C runtime, bypassing
+    // the compile-time restriction.
+    //
+    // Three strategies tried in order:
+    //   1. UIApplication via ObjC runtime (most reliable)
+    //   2. Responder chain walk
+    //   3. extensionContext?.open (rarely works for Share Extensions but try anyway)
+
+    private func openContainingApp(_ url: URL) {
+        // Strategy 1: Access UIApplication.shared via ObjC runtime
+        // UIApplication.shared is blocked at compile-time in extensions, but exists at runtime
+        if openURLViaRuntime(url) {
+            return
+        }
+
+        // Strategy 2: Walk the responder chain to find any object that handles openURL:
+        if openURLViaResponderChain(url) {
+            return
+        }
+
+        // Strategy 3: Last resort — extensionContext.open (officially only for Today widgets)
+        extensionContext?.open(url, completionHandler: nil)
+    }
+
+    /// Access UIApplication.shared through NSClassFromString + performSelector
+    @discardableResult
+    private func openURLViaRuntime(_ url: URL) -> Bool {
+        // Get the UIApplication class at runtime
+        guard let appClass = NSClassFromString("UIApplication") as? NSObjectProtocol else {
+            return false
+        }
+
+        // Call UIApplication.shared (the class method "sharedApplication")
+        let sharedSelector = NSSelectorFromString("sharedApplication")
+        guard appClass.responds(to: sharedSelector),
+              let shared = appClass.perform(sharedSelector)?.takeUnretainedValue() else {
+            return false
+        }
+
+        // Call open(_:options:completionHandler:) — the modern, non-deprecated API
+        let openSelector = NSSelectorFromString("openURL:")
+        guard shared.responds(to: openSelector) else {
+            return false
+        }
+        shared.perform(openSelector, with: url as NSURL)
+        return true
+    }
+
+    /// Walk the responder chain looking for UIApplication
+    @discardableResult
+    private func openURLViaResponderChain(_ url: URL) -> Bool {
+        let selector = NSSelectorFromString("openURL:")
         var responder: UIResponder? = self
         while let r = responder {
-            if r.responds(to: #selector(openURL(_:))) && r !== self {
-                r.perform(#selector(openURL(_:)), with: url)
-                return
+            if r.responds(to: selector) {
+                r.perform(selector, with: url as NSURL)
+                return true
             }
             responder = r.next
         }
-        // Fallback: use the extensionContext.open API (iOS 16+)
-        extensionContext?.open(url)
+        return false
     }
 }

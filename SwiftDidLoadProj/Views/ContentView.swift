@@ -50,6 +50,8 @@ struct ContentView: View {
                                 VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
                                     // Try Recipe to Blinkit Banner
                                     Button(action: {
+                                        // Set a demo URL so the extraction pipeline has real text to work with
+                                        sharedReelURL = "https://www.instagram.com/reel/paneer-tikka-masala-recipe"
                                         showRecipeAnalyzing = true
                                     }) {
                                         HStack {
@@ -188,6 +190,8 @@ struct ContentView: View {
                 let appGroupName = "group.galgotiasUni.SwiftDidLoadProj.share"
                 let savedURL = UserDefaults(suiteName: appGroupName)?.string(forKey: "sharedRecipeURL") ?? ""
                 sharedReelURL = savedURL
+                // Clear it so cold-launch onAppear doesn't re-trigger
+                UserDefaults(suiteName: appGroupName)?.removeObject(forKey: "sharedRecipeURL")
                 
                 if viewModel.isUserLoggedIn {
                     showRecipeAnalyzing = true
@@ -198,6 +202,21 @@ struct ContentView: View {
             if loggedIn && !sharedReelURL.isEmpty {
                 // Trigger recipe analysis once logged in if there's a pending URL
                 showRecipeAnalyzing = true
+            }
+        }
+        .onAppear {
+            // Cold-launch: check if there's a pending shared URL from the Share Extension
+            let appGroupName = "group.galgotiasUni.SwiftDidLoadProj.share"
+            if let saved = UserDefaults(suiteName: appGroupName)?.string(forKey: "sharedRecipeURL"),
+               !saved.isEmpty, saved != "no-url", sharedReelURL.isEmpty {
+                sharedReelURL = saved
+                // Clear it so we don't re-trigger on next appear
+                UserDefaults(suiteName: appGroupName)?.removeObject(forKey: "sharedRecipeURL")
+                if viewModel.isUserLoggedIn {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showRecipeAnalyzing = true
+                    }
+                }
             }
         }
     }

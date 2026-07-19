@@ -1,18 +1,19 @@
 import Foundation
 
 // MARK: - RecipeExtractionService
-// Multi-strategy extraction:
+// Multi-strategy extraction pipeline:
 // 1. Fetch HTML from the shared URL and parse <meta> og:title / og:description
 // 2. Try Instagram oEmbed API as backup
-// 3. Run keyword matching against a comprehensive recipe database
-// 4. Match extracted ingredients to our product catalog
+// 3. If on iOS 26+ with Apple Intelligence available, use FoundationModels for smart extraction
+// 4. Fall back to keyword matching against a comprehensive recipe database
+// 5. Match extracted ingredients to our product catalog
 
 actor RecipeExtractionService {
     static let shared = RecipeExtractionService()
 
     // MARK: - Main Pipeline
 
-    func extractRecipe(from urlString: String) async -> Recipe {
+    func extractRecipe(from urlString: String) async throws -> Recipe {
         // Strategy 1: Fetch HTML meta tags from the URL
         var pageText = await fetchHTMLMetaTags(from: urlString)
 
@@ -26,7 +27,16 @@ actor RecipeExtractionService {
             pageText = urlString
         }
 
-        // Extract recipe from the combined text
+        // Strategy 4: Try Foundation Models (Apple Intelligence) for smart extraction
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            if let aiRecipe = await FoundationModelsExtractor.extract(from: pageText) {
+                return aiRecipe
+            }
+        }
+        #endif
+
+        // Strategy 5: Fall back to keyword matching
         return extractFromText(pageText)
     }
 
@@ -120,7 +130,7 @@ actor RecipeExtractionService {
         }
     }
 
-    // MARK: - Extract Recipe from Text
+    // MARK: - Extract Recipe from Text (keyword matching fallback)
 
     private func extractFromText(_ text: String) -> Recipe {
         let lower = text.lowercased()
