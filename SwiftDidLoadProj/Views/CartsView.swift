@@ -178,6 +178,7 @@ struct CartDetailView: View {
         .sheet(isPresented: $showingScannerSheet) {
             HandwritingScanView(cartId: cartId)
                 .environment(viewModel)
+        }
         .sheet(item: $itemToMove) { context in
             MoveToCartSheet(
                 item: context.item,
