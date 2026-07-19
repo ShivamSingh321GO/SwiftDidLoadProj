@@ -167,6 +167,18 @@ class AppViewModel {
             syncCartItemsToSupabase(cartId: targetCartId)
         }
     }
+
+    /// Adds an item directly to a specific cart by ID (used by HandwritingScanView)
+    func addItem(_ item: Item, toCart cartId: UUID) {
+        if let index = carts.firstIndex(where: { $0.id == cartId }) {
+            var itemWithUser = item
+            itemWithUser.addedByUserId = currentUserSession?.userId
+            itemWithUser.addedByUserName = currentUserSession?.displayName ?? currentUserSession?.email ?? "You"
+            carts[index].items.append(itemWithUser)
+            syncCartItemsToSupabase(cartId: cartId)
+        }
+    }
+
     
     func removeFromCart(item: Item) {
         let targetCartId = isSpacesEnabled ? selectedCartId : (carts.first { $0.name == "General Cart" }?.id ?? selectedCartId)

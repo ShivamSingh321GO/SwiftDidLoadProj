@@ -61,6 +61,7 @@ struct CartDetailView: View {
     @State private var customDonationText = ""
     @State private var showingShareSheet = false
     @State private var showingHistorySheet = false
+    @State private var showingScannerSheet = false
     
     private var cart: Cart? {
         viewModel.carts.first { $0.id == cartId }
@@ -167,6 +168,10 @@ struct CartDetailView: View {
                 CartHistorySheet(cart: cart)
             }
         }
+        .sheet(isPresented: $showingScannerSheet) {
+            HandwritingScanView(cartId: cartId)
+                .environment(viewModel)
+        }
         .toolbar {
             if let cart = cart {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -193,7 +198,14 @@ struct CartDetailView: View {
                                 Label("Share Cart", systemImage: "person.badge.plus")
                             }
                         }
-                        
+
+                        // ✨ Always visible — Scan List
+                        Button(action: {
+                            showingScannerSheet = true
+                        }) {
+                            Label("Scan List", systemImage: "doc.text.viewfinder")
+                        }
+
                         if viewModel.isSpacesEnabled {
                             Button(action: {
                                 showingHistorySheet = true
