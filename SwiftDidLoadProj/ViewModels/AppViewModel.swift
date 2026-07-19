@@ -7,8 +7,9 @@ class AppViewModel {
     var carts: [Cart]
     var selectedCartId: UUID
     var items: [Item] = []
-    var isSpacesEnabled: Bool = false {
+    var isSpacesEnabled: Bool = UserDefaults.standard.bool(forKey: "is_spaces_enabled") {
         didSet {
+            UserDefaults.standard.set(isSpacesEnabled, forKey: "is_spaces_enabled")
             if !isSpacesEnabled {
                 // When spaces is disabled, automatically set the active selection to General Cart
                 if let generalCart = carts.first(where: { $0.name == "General Cart" }) {
