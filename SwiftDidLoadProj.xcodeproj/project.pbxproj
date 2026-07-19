@@ -370,7 +370,7 @@
 				CODE_SIGN_ENTITLEMENTS = SwiftDidLoadProj/SwiftDidLoadProj.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2YFM37G4FG;
+				DEVELOPMENT_TEAM = N9QGP2B48C;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SwiftDidLoadProj/Info.plist;
@@ -404,7 +404,7 @@
 				CODE_SIGN_ENTITLEMENTS = SwiftDidLoadProj/SwiftDidLoadProj.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2YFM37G4FG;
+				DEVELOPMENT_TEAM = N9QGP2B48C;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SwiftDidLoadProj/Info.plist;
@@ -435,7 +435,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2YFM37G4FG;
+				DEVELOPMENT_TEAM = N9QGP2B48C;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BlinkitShare/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BlinkitShare;
@@ -463,7 +463,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2YFM37G4FG;
+				DEVELOPMENT_TEAM = N9QGP2B48C;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BlinkitShare/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BlinkitShare;
