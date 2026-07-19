@@ -13,5 +13,7 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSFoundationModelsUsageDescription</key>
+	<string>This app uses Apple Intelligence to identify grocery ingredients from recipe reels, so you can instantly add them to your Blinkit cart.</string>
 </dict>
 </plist>

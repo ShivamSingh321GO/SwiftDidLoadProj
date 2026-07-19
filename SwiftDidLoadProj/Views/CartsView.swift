@@ -52,6 +52,12 @@ struct CartsView: View {
     }
 }
 
+struct MoveItemContext: Identifiable {
+    let id = UUID()
+    let item: Item
+    let quantity: Int
+}
+
 struct CartDetailView: View {
     let cartId: UUID
     @Environment(AppViewModel.self) var viewModel
@@ -61,6 +67,7 @@ struct CartDetailView: View {
     @State private var customDonationText = ""
     @State private var showingShareSheet = false
     @State private var showingHistorySheet = false
+    @State private var itemToMove: MoveItemContext? = nil
     
     private var cart: Cart? {
         viewModel.carts.first { $0.id == cartId }
@@ -166,6 +173,16 @@ struct CartDetailView: View {
             if let cart = cart {
                 CartHistorySheet(cart: cart)
             }
+        }
+        .sheet(item: $itemToMove) { context in
+            MoveToCartSheet(
+                item: context.item,
+                quantity: context.quantity,
+                currentCartId: cartId,
+                viewModel: viewModel
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .toolbar {
             if let cart = cart {
@@ -309,16 +326,13 @@ struct CartDetailView: View {
                             .foregroundColor(AppTheme.Colors.textSecondary)
                         
                         Button(action: {
-                            for _ in 0..<quantity {
-                                viewModel.removeFromCart(item: item)
+                                itemToMove = MoveItemContext(item: item, quantity: quantity)
+                            }) {
+                                Label("Move to cart", systemImage: "arrow.right.circle")
+                                    .font(.caption2)
+                                    .foregroundColor(AppTheme.Colors.primary)
                             }
-                        }) {
-                            Text("Move to wishlist")
-                                .font(.caption2)
-                                .foregroundColor(AppTheme.Colors.textSecondary)
-                                .underline()
-                        }
-                        .buttonStyle(.plain)
+                            .buttonStyle(.plain)
                     }
                     
                     Spacer()
@@ -840,5 +854,263 @@ struct CartHistorySheet: View {
     NavigationView {
         CartsView()
             .environment(AppViewModel())
+    }
+}
+
+// MARK: - Move To Cart Sheet
+
+struct MoveToCartSheet: View {
+    let item: Item
+    let quantity: Int
+    let currentCartId: UUID
+    var viewModel: AppViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var isCreatingNewSpace = false
+    @State private var newSpaceName = ""
+
+    private var otherCarts: [Cart] {
+        viewModel.carts.filter { $0.id != currentCartId }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header Info
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Move to Space")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                
+                Text("Select a destination Shopping Space for this item")
+                    .font(.subheadline)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+
+            // Item Preview Card
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(AppTheme.Colors.secondaryBackground)
+                        .frame(width: 44, height: 44)
+                    if !item.image.isEmpty {
+                        Image(item.image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 36, height: 36)
+                    } else if let url = item.imageURL {
+                        CachedAsyncImage(url: url) { img in
+                            img.resizable().scaledToFit()
+                        } placeholder: {
+                            ProgressView()
+                        }
+                        .frame(width: 36, height: 36)
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                    Text("Qty: \(quantity)  ·  ₹\(item.price * quantity)")
+                        .font(.caption)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            // Scrollable list of Spaces & Creation Form
+            ScrollView {
+                VStack(spacing: 12) {
+                    // List of existing spaces
+                    ForEach(otherCarts) { cart in
+                        let isSelected = viewModel.selectedCartId == cart.id
+                        
+                        Button(action: {
+                            viewModel.moveItems(
+                                item: item,
+                                quantity: quantity,
+                                fromCartId: currentCartId,
+                                toCartId: cart.id
+                            )
+                            dismiss()
+                        }) {
+                            HStack(spacing: 16) {
+                                ZStack {
+                                    Circle()
+                                        .fill(isSelected ? AppTheme.Colors.primary.opacity(0.15) : Color(.systemGray6))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: isSelected ? "cart.fill" : "cart")
+                                        .foregroundColor(isSelected ? AppTheme.Colors.primary : AppTheme.Colors.textSecondary)
+                                        .font(.system(size: 18, weight: .semibold))
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(cart.name)
+                                        .font(.headline)
+                                        .foregroundColor(isSelected ? AppTheme.Colors.primary : AppTheme.Colors.textPrimary)
+                                        .fontWeight(isSelected ? .bold : .semibold)
+                                    
+                                    Text("\(cart.items.count) items")
+                                        .font(.caption)
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .foregroundColor(AppTheme.Colors.primary)
+                                    .font(.title3)
+                            }
+                            .padding(.all, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(isSelected ? AppTheme.Colors.primary.opacity(0.04) : Color(.secondarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(isSelected ? AppTheme.Colors.primary.opacity(0.3) : Color.clear, lineWidth: 1.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Create New Space Section
+                    if isCreatingNewSpace {
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "pencil")
+                                    .foregroundColor(AppTheme.Colors.primary)
+                                    .font(.headline)
+                                
+                                TextField("Enter space name...", text: $newSpaceName)
+                                    .font(.body)
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                    .textFieldStyle(.plain)
+                            }
+                            .padding(.all, 14)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                            
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        isCreatingNewSpace = false
+                                        newSpaceName = ""
+                                    }
+                                }) {
+                                    Text("Cancel")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Button(action: {
+                                    let trimmed = newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        // 1. Create the new cart
+                                        viewModel.createCart(name: trimmed, makeActive: false)
+                                        
+                                        // 2. Locate the new cart's UUID
+                                        if let newCart = viewModel.carts.first(where: { $0.name == trimmed }) {
+                                            // 3. Move items directly to it
+                                            viewModel.moveItems(
+                                                item: item,
+                                                quantity: quantity,
+                                                fromCartId: currentCartId,
+                                                toCartId: newCart.id
+                                            )
+                                        }
+                                        newSpaceName = ""
+                                        isCreatingNewSpace = false
+                                        dismiss()
+                                    }
+                                }) {
+                                    Text("Create & Move")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .background(newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppTheme.Colors.primary.opacity(0.5) : AppTheme.Colors.primary)
+                                        .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
+                        .padding(.all, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemBackground))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(AppTheme.Colors.primary.opacity(0.3), lineWidth: 1.5)
+                        )
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                    } else {
+                        // Create New Space Button matching the dash design of home screen
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isCreatingNewSpace = true
+                            }
+                        }) {
+                            HStack(spacing: 16) {
+                                ZStack {
+                                    Circle()
+                                        .fill(AppTheme.Colors.primary.opacity(0.1))
+                                        .frame(width: 44, height: 44)
+                                    
+                                    Image(systemName: "plus")
+                                        .foregroundColor(AppTheme.Colors.primary)
+                                        .font(.system(size: 18, weight: .bold))
+                                }
+                                
+                                Text("Create New Space")
+                                    .font(.headline)
+                                    .foregroundColor(AppTheme.Colors.primary)
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(AppTheme.Colors.primary.opacity(0.7))
+                                    .font(.system(size: 14, weight: .bold))
+                                
+                            }
+                            .padding(.all, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .strokeBorder(
+                                        AppTheme.Colors.primary.opacity(0.3),
+                                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, dash: [5, 4])
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 24)
+            }
+        }
+        .background(Color(.systemBackground))
     }
 }
