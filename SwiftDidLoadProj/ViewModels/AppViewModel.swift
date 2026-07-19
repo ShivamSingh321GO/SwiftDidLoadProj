@@ -217,6 +217,34 @@ class AppViewModel {
         }
     }
     
+    /// Moves `quantity` copies of `item` from one cart to another and syncs both.
+    func moveItems(item: Item, quantity: Int, fromCartId: UUID, toCartId: UUID) {
+        guard
+            let fromIndex = carts.firstIndex(where: { $0.id == fromCartId }),
+            let toIndex   = carts.firstIndex(where: { $0.id == toCartId }),
+            fromCartId != toCartId
+        else { return }
+
+        // Remove exactly `quantity` occurrences from the source cart
+        var removed = 0
+        carts[fromIndex].items.removeAll { existing in
+            guard existing.id == item.id, removed < quantity else { return false }
+            removed += 1
+            return true
+        }
+
+        // Stamp with current user and append to destination cart
+        var stamped = item
+        stamped.addedByUserId   = currentUserSession?.userId
+        stamped.addedByUserName = currentUserSession?.displayName ?? currentUserSession?.email ?? "You"
+        for _ in 0..<quantity {
+            carts[toIndex].items.append(stamped)
+        }
+
+        syncCartItemsToSupabase(cartId: fromCartId)
+        syncCartItemsToSupabase(cartId: toCartId)
+    }
+    
     static let staticProducts: [Item] = [
         Item(id: "1", name: "Amul Gold Full Cream Milk", price: 72, originalPrice: 74, weight: "1 L", discount: "3% OFF", image: "AmulFullCreame", brand: "Amul", category: "Dairy, Bread & Eggs", subCategory: "Milk", rating: 4.8, ratingCount: "14.8K", aliases: ["milk", "amul", "full cream milk"]),
         Item(id: "2", name: "Mother Dairy Paneer", price: 95, originalPrice: 110, weight: "200 g", discount: "14% OFF", image: "Panner", brand: "Mother Dairy", category: "Dairy, Bread & Eggs", subCategory: "Paneer", rating: 4.7, ratingCount: "12.1K", aliases: ["paneer", "mother dairy", "cottage cheese"]),
