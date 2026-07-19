@@ -31,163 +31,174 @@ struct ContentView: View {
     }
     
     var body: some View {
-        if viewModel.isUserLoggedIn {
-            NavigationStack {
-                ZStack(alignment: .bottom) {
-                    VStack(spacing: 0) {
-                        SpacesHeaderView(viewModel: viewModel, showingSpaceSelectionSheet: $showingSpaceSelectionSheet)
-                            .padding(.top, AppTheme.Spacing.small)
-                            .background(Color(.systemBackground))
-                        
-                        CategoriesRowView()
-                            .padding(.vertical, 8)
-                            .background(Color(.systemBackground))
-                        
-                        Divider()
-                        
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
-                                // Try Recipe to Blinkit Banner
-                                Button(action: {
-                                    showRecipeAnalyzing = true
-                                }) {
-                                    HStack {
-                                        Image(systemName: "wand.and.stars")
-                                            .font(.title2)
-                                        VStack(alignment: .leading) {
-                                            Text("Try Recipe to Blinkit")
-                                                .font(.headline)
-                                                .fontWeight(.bold)
-                                            Text("Simulate sharing a recipe reel from Instagram")
-                                                .font(.caption)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(LinearGradient(colors: [AppTheme.Colors.primary, Color.purple], startPoint: .leading, endPoint: .trailing))
-                                    .cornerRadius(12)
-                                }
-                                .padding(.horizontal, AppTheme.Spacing.medium)
-                                .padding(.top, AppTheme.Spacing.medium)
-                                
-                                SectionHeaderView()
-                                    .padding(.top, AppTheme.Spacing.medium)
-                                
-                                Group {
-                                    if viewModel.items.isEmpty {
+        Group {
+            if viewModel.isUserLoggedIn {
+                NavigationStack {
+                    ZStack(alignment: .bottom) {
+                        VStack(spacing: 0) {
+                            SpacesHeaderView(viewModel: viewModel, showingSpaceSelectionSheet: $showingSpaceSelectionSheet)
+                                .padding(.top, AppTheme.Spacing.small)
+                                .background(Color(.systemBackground))
+                            
+                            CategoriesRowView()
+                                .padding(.vertical, 8)
+                                .background(Color(.systemBackground))
+                            
+                            Divider()
+                            
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
+                                    // Try Recipe to Blinkit Banner
+                                    Button(action: {
+                                        showRecipeAnalyzing = true
+                                    }) {
                                         HStack {
+                                            Image(systemName: "wand.and.stars")
+                                                .font(.title2)
+                                            VStack(alignment: .leading) {
+                                                Text("Try Recipe to Blinkit")
+                                                    .font(.headline)
+                                                    .fontWeight(.bold)
+                                                Text("Simulate sharing a recipe reel from Instagram")
+                                                    .font(.caption)
+                                            }
                                             Spacer()
-                                            ProgressView("Loading Groceries...")
-                                                .padding(.top, 40)
-                                            Spacer()
+                                            Image(systemName: "chevron.right")
                                         }
-                                    } else {
-                                        LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
-                                            ForEach(filteredItems) { item in
-                                                NavigationLink(value: item) {
-                                                    ItemCardView(item: item)
-                                                        .environment(viewModel)
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .background(LinearGradient(colors: [AppTheme.Colors.primary, Color.purple], startPoint: .leading, endPoint: .trailing))
+                                        .cornerRadius(12)
+                                    }
+                                    .padding(.horizontal, AppTheme.Spacing.medium)
+                                    .padding(.top, AppTheme.Spacing.medium)
+                                    
+                                    SectionHeaderView()
+                                        .padding(.top, AppTheme.Spacing.medium)
+                                    
+                                    Group {
+                                        if viewModel.items.isEmpty {
+                                            HStack {
+                                                Spacer()
+                                                ProgressView("Loading Groceries...")
+                                                    .padding(.top, 40)
+                                                Spacer()
+                                            }
+                                        } else {
+                                            LazyVGrid(columns: columns, spacing: AppTheme.Spacing.medium) {
+                                                ForEach(filteredItems) { item in
+                                                    NavigationLink(value: item) {
+                                                        ItemCardView(item: item)
+                                                            .environment(viewModel)
+                                                    }
+                                                    .buttonStyle(.plain)
                                                 }
-                                                .buttonStyle(.plain)
                                             }
                                         }
                                     }
+                                    .padding(.horizontal, AppTheme.Spacing.medium)
+                                    
+                                    // Bottom Padding for floating button
+                                    Spacer().frame(height: 100)
                                 }
-                                .padding(.horizontal, AppTheme.Spacing.medium)
-                                
-                                // Bottom Padding for floating button
-                                Spacer().frame(height: 100)
+                            }
+                        }
+                        .task {
+                            if viewModel.items.isEmpty {
+                                await viewModel.fetchGroceries()
+                            }
+                        }
+                        
+                        // Floating Cart Button
+                        FloatingCartButton(
+                            itemCount: viewModel.activeCartItemsCount,
+                            isSpacesEnabled: viewModel.isSpacesEnabled,
+                            activeSpaceName: viewModel.selectedCart?.name,
+                            onChangeSpace: {
+                                showingSpaceSelectionSheet = true
+                            },
+                            action: {
+                                navigateToCarts = true
+                            }
+                        )
+                    }
+                    .sheet(isPresented: $showingSpaceSelectionSheet, onDismiss: {
+                        if pendingRecipeShopping {
+                            pendingRecipeShopping = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                showRecipeShopping = true
+                            }
+                        }
+                    }) {
+                        SpaceSelectionSheet(viewModel: viewModel)
+                            .presentationDetents([.medium])
+                            .presentationDragIndicator(.visible)
+                    }
+                    .sheet(isPresented: $showingProfileSheet) {
+                        UserProfileView(viewModel: viewModel)
+                    }
+                    .navigationTitle("")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search for atta, dal, coke and more")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(action: {
+                                showingProfileSheet = true
+                            }) {
+                                Image(systemName: "person.circle")
+                                    .font(.title2)
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
                             }
                         }
                     }
-                    .task {
-                        if viewModel.items.isEmpty {
-                            await viewModel.fetchGroceries()
-                        }
+                    .navigationDestination(isPresented: $navigateToCarts) {
+                        CartDetailView(cartId: viewModel.selectedCartId)
+                            .environment(viewModel)
                     }
-                    
-                    // Floating Cart Button
-                    FloatingCartButton(
-                        itemCount: viewModel.activeCartItemsCount,
-                        isSpacesEnabled: viewModel.isSpacesEnabled,
-                        activeSpaceName: viewModel.selectedCart?.name,
-                        onChangeSpace: {
-                            showingSpaceSelectionSheet = true
-                        },
-                        action: {
-                            navigateToCarts = true
-                        }
-                    )
-                }
-                .sheet(isPresented: $showingSpaceSelectionSheet, onDismiss: {
-                    if pendingRecipeShopping {
-                        pendingRecipeShopping = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            showRecipeShopping = true
-                        }
+                    .navigationDestination(for: Item.self) { item in
+                        ItemDetailView(item: item)
+                            .environment(viewModel)
                     }
-                }) {
-                    SpaceSelectionSheet(viewModel: viewModel)
-                        .presentationDetents([.medium])
-                        .presentationDragIndicator(.visible)
-                }
-                .sheet(isPresented: $showingProfileSheet) {
-                    UserProfileView(viewModel: viewModel)
-                }
-                .navigationTitle("")
-                .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search for atta, dal, coke and more")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: {
-                            showingProfileSheet = true
-                        }) {
-                            Image(systemName: "person.circle")
-                                .font(.title2)
-                                .foregroundColor(AppTheme.Colors.textPrimary)
-                        }
+                    .navigationDestination(isPresented: $showRecipeShopping) {
+                        RecipeShoppingView(recipe: extractedRecipe)
+                            .environment(viewModel)
                     }
                 }
-                .navigationDestination(isPresented: $navigateToCarts) {
-                    CartDetailView(cartId: viewModel.selectedCartId)
-                        .environment(viewModel)
-                }
-                .navigationDestination(for: Item.self) { item in
-                    ItemDetailView(item: item)
-                        .environment(viewModel)
-                }
-                .navigationDestination(isPresented: $showRecipeShopping) {
-                    RecipeShoppingView(recipe: extractedRecipe)
-                        .environment(viewModel)
-                }
+            } else {
+                LoginView(viewModel: viewModel)
             }
-            .fullScreenCover(isPresented: $showRecipeAnalyzing) {
-                RecipeAnalyzingView(
-                    isPresented: $showRecipeAnalyzing,
-                    onRecipeExtracted: { recipe in
-                        extractedRecipe = recipe
-                        // Show space selection first, then navigate to recipe view
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            pendingRecipeShopping = true
-                            showingSpaceSelectionSheet = true
-                        }
-                    },
-                    sharedURL: sharedReelURL
-                )
-            }
-            .onOpenURL { url in
-                if url.scheme == "blinkit" && url.host == "recipe" {
-                    // Read the URL saved by the Share Extension
-                    let appGroupName = "group.galgotiasUni.SwiftDidLoadProj.share"
-                    let savedURL = UserDefaults(suiteName: appGroupName)?.string(forKey: "sharedRecipeURL") ?? ""
-                    sharedReelURL = savedURL
+        }
+        .fullScreenCover(isPresented: $showRecipeAnalyzing) {
+            RecipeAnalyzingView(
+                isPresented: $showRecipeAnalyzing,
+                onRecipeExtracted: { recipe in
+                    extractedRecipe = recipe
+                    // Show space selection first, then navigate to recipe view
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        pendingRecipeShopping = true
+                        showingSpaceSelectionSheet = true
+                    }
+                },
+                sharedURL: sharedReelURL
+            )
+        }
+        .onOpenURL { url in
+            if url.scheme == "blinkit" && url.host == "recipe" {
+                // Read the URL saved by the Share Extension
+                let appGroupName = "group.galgotiasUni.SwiftDidLoadProj.share"
+                let savedURL = UserDefaults(suiteName: appGroupName)?.string(forKey: "sharedRecipeURL") ?? ""
+                sharedReelURL = savedURL
+                
+                if viewModel.isUserLoggedIn {
                     showRecipeAnalyzing = true
                 }
             }
-        } else {
-            LoginView(viewModel: viewModel)
+        }
+        .onChange(of: viewModel.isUserLoggedIn) { _, loggedIn in
+            if loggedIn && !sharedReelURL.isEmpty {
+                // Trigger recipe analysis once logged in if there's a pending URL
+                showRecipeAnalyzing = true
+            }
         }
     }
 }

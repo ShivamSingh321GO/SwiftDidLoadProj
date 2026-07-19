@@ -1,215 +1,335 @@
 import Foundation
 
 // MARK: - RecipeExtractionService
-// Uses Instagram's public oEmbed API to get reel metadata,
-// then uses Apple Foundation Models (on-device AI) to extract items to buy.
-// Falls back to heuristic keyword matching on older devices.
+// Multi-strategy extraction:
+// 1. Fetch HTML from the shared URL and parse <meta> og:title / og:description
+// 2. Try Instagram oEmbed API as backup
+// 3. Run keyword matching against a comprehensive recipe database
+// 4. Match extracted ingredients to our product catalog
 
 actor RecipeExtractionService {
-
     static let shared = RecipeExtractionService()
 
-    // MARK: - Main Entry Point
+    // MARK: - Main Pipeline
 
-    func extractRecipe(from urlString: String) async throws -> Recipe {
-        let pageText = await fetchPageText(from: urlString)
-        return await extractItems(from: pageText, originalURL: urlString)
+    func extractRecipe(from urlString: String) async -> Recipe {
+        // Strategy 1: Fetch HTML meta tags from the URL
+        var pageText = await fetchHTMLMetaTags(from: urlString)
+
+        // Strategy 2: Try oEmbed if HTML fetch returned nothing useful
+        if pageText.isEmpty {
+            pageText = await fetchOEmbed(from: urlString)
+        }
+
+        // Strategy 3: Use the raw URL itself as context (Instagram URLs often contain clues)
+        if pageText.isEmpty {
+            pageText = urlString
+        }
+
+        // Extract recipe from the combined text
+        return extractFromText(pageText)
     }
 
-    // MARK: - Step 1: Fetch Page Text via oEmbed
+    // MARK: - Strategy 1: Fetch HTML and parse <meta> tags
 
-    private func fetchPageText(from urlString: String) async -> String {
-        guard
-            !urlString.isEmpty,
-            urlString != "no-url",
-            let encodedURL = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-            let oembedURL = URL(string: "https://api.instagram.com/oembed?url=\(encodedURL)&format=json")
-        else {
-            return ""
-        }
+    private func fetchHTMLMetaTags(from urlString: String) async -> String {
+        guard !urlString.isEmpty, urlString != "no-url",
+              let url = URL(string: urlString) else { return "" }
+
         do {
-            let (data, response) = try await URLSession.shared.data(from: oembedURL)
-            guard
-                let httpResponse = response as? HTTPURLResponse,
-                httpResponse.statusCode == 200,
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else {
-                return ""
-            }
-            let title = json["title"] as? String ?? ""
-            let authorName = json["author_name"] as? String ?? ""
-            // Combine author and title so the model has as much context as possible
-            return "Instagram Reel by @\(authorName): \(title)"
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            // Pretend to be a browser so Instagram returns full HTML
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else { return "" }
+
+            // Parse og:title
+            let ogTitle = extractMetaContent(from: html, property: "og:title")
+            // Parse og:description
+            let ogDescription = extractMetaContent(from: html, property: "og:description")
+            // Parse regular title
+            let pageTitle = extractHTMLTitle(from: html)
+
+            let combined = [ogTitle, ogDescription, pageTitle]
+                .filter { !$0.isEmpty }
+                .joined(separator: " | ")
+
+            return combined
         } catch {
             return ""
         }
     }
 
-    // MARK: - Step 2: Extract Items
+    // Extract content from <meta property="..." content="...">
+    private func extractMetaContent(from html: String, property: String) -> String {
+        // Pattern: <meta property="og:title" content="...">
+        // Also handles: <meta name="description" content="...">
+        let patterns = [
+            "property=\"\(property)\"\\s+content=\"([^\"]+)\"",
+            "content=\"([^\"]+)\"\\s+property=\"\(property)\"",
+            "name=\"\(property)\"\\s+content=\"([^\"]+)\"",
+            "content=\"([^\"]+)\"\\s+name=\"\(property)\""
+        ]
 
-    private func extractItems(from text: String, originalURL: String) async -> Recipe {
-        // Try Apple Intelligence first (iOS 26+)
-        #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let inputText = text.isEmpty ? originalURL : text
-            if let recipe = await FoundationModelsExtractor.extract(from: inputText) {
-                return recipe
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)) {
+                let nsRange = match.range(at: 1)
+                if nsRange.location != NSNotFound, let range = Range(nsRange, in: html) {
+                    return String(html[range])
+                }
             }
         }
-        #endif
-
-        // Heuristic fallback — only runs on older OS / simulator
-        return heuristicExtraction(from: text.isEmpty ? originalURL : text)
+        return ""
     }
 
-    // MARK: - Heuristic Fallback
-    // Covers common scenarios when Foundation Models is not available.
-    // Returns the best keyword match; never returns a hard-coded unrelated recipe.
+    // Extract <title>...</title>
+    private func extractHTMLTitle(from html: String) -> String {
+        if let regex = try? NSRegularExpression(pattern: "<title[^>]*>([^<]+)</title>", options: .caseInsensitive),
+           let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)) {
+            let nsRange = match.range(at: 1)
+            if nsRange.location != NSNotFound, let range = Range(nsRange, in: html) {
+                return String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return ""
+    }
 
-    private func heuristicExtraction(from text: String) -> Recipe {
-        let lowercased = text.lowercased()
+    // MARK: - Strategy 2: Instagram oEmbed API
 
-        // Product reels — single packaged item
-        let productMappings: [(keywords: [String], name: String, items: [(String, [String])])] = [
-            (["coca cola", "coke", "coca-cola"], "Coca Cola",
-             [("Coca Cola", ["coke", "cola", "coca cola"])]),
-            (["sprite"], "Sprite",
-             [("Sprite", ["sprite", "lemon drink"])]),
-            (["thums up", "thumbs up"], "Thums Up",
-             [("Thums Up", ["thums up", "cola"])]),
-            (["pepsi"], "Pepsi",
-             [("Pepsi", ["pepsi", "cola"])]),
-            (["maggi"], "Maggi Noodles",
-             [("Maggi", ["maggi", "noodles"])]),
-            (["lay's", "lays", "chips"], "Lay's Chips",
-             [("Lay's Chips", ["chips", "lays"])]),
-            (["kurkure"], "Kurkure",
-             [("Kurkure", ["kurkure", "namkeen"])]),
-            (["haldiram"], "Haldiram's",
-             [("Haldiram's Aloo Bhujia", ["bhujia", "haldiram", "namkeen"])]),
-            (["cadbury", "dairy milk", "chocolate"], "Chocolate",
-             [("Cadbury Dairy Milk", ["chocolate", "cadbury"])]),
-            (["dove"], "Dove Soap",
-             [("Dove Soap", ["soap", "dove"])]),
-            (["colgate"], "Colgate Toothpaste",
-             [("Colgate Toothpaste", ["toothpaste", "colgate"])]),
-            (["surf excel", "detergent"], "Surf Excel",
-             [("Surf Excel", ["detergent", "surf excel"])])
+    private func fetchOEmbed(from urlString: String) async -> String {
+        guard let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://api.instagram.com/oembed?url=\(encoded)&format=json") else { return "" }
+
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "" }
+
+            let title = json["title"] as? String ?? ""
+            let author = json["author_name"] as? String ?? ""
+            return "\(author) \(title)".trimmingCharacters(in: .whitespaces)
+        } catch {
+            return ""
+        }
+    }
+
+    // MARK: - Extract Recipe from Text
+
+    private func extractFromText(_ text: String) -> Recipe {
+        let lower = text.lowercased()
+
+        // === RECIPE DISH MAPPINGS ===
+        // Each entry: keywords to match → recipe name → list of (ingredient name, search terms)
+        let recipes: [(keys: [String], name: String, items: [(String, [String])])] = [
+            // Indian curries
+            (["paneer tikka", "tikka masala", "paneer masala", "shahi paneer"],
+             "Paneer Tikka Masala",
+             [("Paneer", ["paneer"]), ("Curd", ["curd", "dahi"]), ("Butter", ["butter"]),
+              ("Oil", ["oil"]), ("Salt", ["salt"]), ("Tomato Sauce", ["ketchup", "sauce"])]),
+
+            (["butter chicken", "murgh makhani"],
+             "Butter Chicken",
+             [("Butter", ["butter"]), ("Curd", ["curd", "dahi"]), ("Oil", ["oil"]),
+              ("Milk", ["milk"]), ("Salt", ["salt"]), ("Tomato Sauce", ["ketchup", "sauce"])]),
+
+            (["dal makhani", "dal makhni", "black dal"],
+             "Dal Makhani",
+             [("Toor Dal", ["dal", "toor dal"]), ("Butter", ["butter"]),
+              ("Milk", ["milk"]), ("Salt", ["salt"])]),
+
+            (["chole bhature", "chole", "chana masala", "chickpea"],
+             "Chole Bhature",
+             [("Oil", ["oil"]), ("Salt", ["salt"]), ("Atta", ["atta", "wheat flour"]),
+              ("Curd", ["curd", "dahi"])]),
+
+            (["rajma", "kidney bean"],
+             "Rajma Chawal",
+             [("Basmati Rice", ["rice", "basmati"]), ("Oil", ["oil"]),
+              ("Salt", ["salt"]), ("Tomato Sauce", ["ketchup", "sauce"])]),
+
+            (["aloo gobi", "aloo gobhi"],
+             "Aloo Gobi",
+             [("Oil", ["oil"]), ("Salt", ["salt"]), ("Butter", ["butter"])]),
+
+            (["palak paneer", "saag paneer"],
+             "Palak Paneer",
+             [("Paneer", ["paneer"]), ("Butter", ["butter"]), ("Milk", ["milk"]),
+              ("Salt", ["salt"]), ("Oil", ["oil"])]),
+
+            // Rice dishes
+            (["biryani", "dum biryani", "chicken biryani", "veg biryani", "hyderabadi"],
+             "Biryani",
+             [("Basmati Rice", ["rice", "basmati"]), ("Curd", ["curd", "dahi"]),
+              ("Oil", ["oil"]), ("Salt", ["salt"]), ("Butter", ["butter"])]),
+
+            (["pulao", "pilaf", "fried rice"],
+             "Pulao",
+             [("Basmati Rice", ["rice", "basmati"]), ("Oil", ["oil"]),
+              ("Butter", ["butter"]), ("Salt", ["salt"])]),
+
+            // Breakfast
+            (["poha", "aloo poha", "beaten rice"],
+             "Poha",
+             [("Oil", ["oil"]), ("Salt", ["salt"]), ("Curd", ["curd"])]),
+
+            (["paratha", "aloo paratha", "stuffed paratha", "gobi paratha"],
+             "Paratha",
+             [("Atta", ["atta", "wheat flour"]), ("Butter", ["butter"]),
+              ("Oil", ["oil"]), ("Salt", ["salt"]), ("Curd", ["curd", "dahi"])]),
+
+            (["dosa", "masala dosa", "idli", "uttapam"],
+             "Dosa / Idli",
+             [("Oil", ["oil"]), ("Butter", ["butter"]), ("Salt", ["salt"]),
+              ("Curd", ["curd", "dahi"])]),
+
+            (["omelette", "omelet", "egg", "scrambled egg", "egg curry"],
+             "Egg Recipe",
+             [("Eggs", ["eggs"]), ("Butter", ["butter"]), ("Oil", ["oil"]),
+              ("Salt", ["salt"]), ("Bread", ["bread"])]),
+
+            (["sandwich", "bread toast", "toast", "grilled sandwich"],
+             "Sandwich",
+             [("Bread", ["bread"]), ("Butter", ["butter"]), ("Eggs", ["eggs"]),
+              ("Tomato Sauce", ["ketchup"]), ("Salt", ["salt"])]),
+
+            // Western / Fusion
+            (["pasta", "spaghetti", "penne", "macaroni", "mac and cheese", "alfredo"],
+             "Pasta",
+             [("Butter", ["butter"]), ("Milk", ["milk"]),
+              ("Tomato Sauce", ["ketchup", "sauce"]), ("Salt", ["salt"])]),
+
+            (["pizza", "pizza dough"],
+             "Pizza",
+             [("Atta", ["atta", "wheat flour"]), ("Tomato Sauce", ["ketchup", "sauce"]),
+              ("Oil", ["oil"]), ("Salt", ["salt"]), ("Butter", ["butter"])]),
+
+            (["pancake", "waffle", "french toast"],
+             "Pancakes",
+             [("Eggs", ["eggs"]), ("Milk", ["milk"]), ("Butter", ["butter"]),
+              ("Atta", ["atta", "wheat flour"]), ("Salt", ["salt"])]),
+
+            (["cake", "baking", "brownie", "muffin", "cupcake"],
+             "Baking",
+             [("Eggs", ["eggs"]), ("Milk", ["milk"]), ("Butter", ["butter"]),
+              ("Atta", ["atta", "wheat flour"]), ("Chocolate", ["chocolate", "cadbury"]),
+              ("Salt", ["salt"])]),
+
+            (["smoothie", "milkshake", "shake", "lassi"],
+             "Smoothie / Shake",
+             [("Milk", ["milk"]), ("Curd", ["curd", "dahi"])]),
+
+            // Snacks
+            (["samosa", "spring roll", "pakora", "pakoda", "bhajiya"],
+             "Snacks",
+             [("Oil", ["oil"]), ("Atta", ["atta", "wheat flour"]),
+              ("Salt", ["salt"]), ("Tomato Sauce", ["ketchup", "sauce"])]),
+
+            (["maggi", "noodle", "ramen", "instant noodle"],
+             "Maggi Noodles",
+             [("Maggi", ["maggi", "noodles"]), ("Butter", ["butter"]),
+              ("Eggs", ["eggs"]), ("Salt", ["salt"])]),
+
+            // Drinks
+            (["chai", "tea", "masala chai"],
+             "Chai",
+             [("Milk", ["milk"]), ("Salt", ["salt"])]),
+
+            (["coffee", "cold coffee", "iced coffee"],
+             "Coffee",
+             [("Milk", ["milk"]), ("Chocolate", ["chocolate", "cadbury"])]),
         ]
 
-        for mapping in productMappings {
-            if mapping.keywords.contains(where: { lowercased.contains($0) }) {
+        // Match recipes
+        for recipe in recipes {
+            if recipe.keys.contains(where: { lower.contains($0) }) {
                 return Recipe(
-                    name: mapping.name,
-                    ingredients: mapping.items.map { RecipeIngredient(genericName: $0.0, searchTerms: $0.1) }
+                    name: recipe.name,
+                    ingredients: recipe.items.map { RecipeIngredient(genericName: $0.0, searchTerms: $0.1) }
                 )
             }
         }
 
-        // Recipe dish mappings
-        let dishMappings: [(keywords: [String], recipe: String, ingredients: [(String, [String])])] = [
-            (
-                ["paneer tikka", "tikka masala", "paneer tikka masala"],
-                "Paneer Tikka Masala",
-                [("Paneer", ["paneer"]), ("Curd", ["curd", "dahi"]), ("Butter", ["butter"]), ("Oil", ["oil"]), ("Salt", ["salt"])]
-            ),
-            (
-                ["dal makhani", "dal makhni"],
-                "Dal Makhani",
-                [("Toor Dal", ["dal", "toor dal"]), ("Butter", ["butter"]), ("Milk", ["milk"]), ("Salt", ["salt"])]
-            ),
-            (
-                ["biryani", "dum biryani"],
-                "Biryani",
-                [("Basmati Rice", ["rice", "basmati"]), ("Curd", ["curd", "dahi"]), ("Oil", ["oil"]), ("Salt", ["salt"])]
-            ),
-            (
-                ["pasta", "spaghetti", "penne"],
-                "Pasta",
-                [("Butter", ["butter"]), ("Milk", ["milk"]), ("Tomato Sauce", ["ketchup", "sauce"]), ("Salt", ["salt"])]
-            ),
-            (
-                ["sandwich", "bread toast", "toast"],
-                "Sandwich",
-                [("Bread", ["bread"]), ("Butter", ["butter"]), ("Eggs", ["eggs"]), ("Tomato Sauce", ["ketchup"])]
-            ),
-            (
-                ["poha", "aloo poha"],
-                "Poha",
-                [("Oil", ["oil"]), ("Salt", ["salt"]), ("Curd", ["curd"])]
+        // === SINGLE PRODUCT MAPPINGS ===
+        let products: [(keys: [String], name: String, terms: [String])] = [
+            (["coca cola", "coke", "coca-cola"], "Coca-Cola", ["coke", "cola"]),
+            (["sprite"], "Sprite", ["sprite"]),
+            (["thums up", "thumbs up"], "Thums Up", ["thums up", "cola"]),
+            (["pepsi"], "Pepsi", ["pepsi", "cola"]),
+            (["lay's", "lays", "chips"], "Lay's Chips", ["chips", "lays"]),
+            (["kurkure"], "Kurkure", ["kurkure", "namkeen"]),
+            (["haldiram", "bhujia"], "Haldiram's", ["bhujia", "haldiram", "namkeen"]),
+            (["cadbury", "dairy milk", "chocolate", "silk"], "Cadbury", ["chocolate", "cadbury"]),
+            (["colgate", "toothpaste"], "Colgate", ["toothpaste", "colgate"]),
+            (["dove", "soap"], "Dove", ["soap", "dove"]),
+            (["surf", "detergent", "washing"], "Surf Excel", ["detergent", "surf excel"]),
+        ]
+
+        for product in products {
+            if product.keys.contains(where: { lower.contains($0) }) {
+                return Recipe(
+                    name: product.name,
+                    ingredients: [RecipeIngredient(genericName: product.name, searchTerms: product.terms)]
+                )
+            }
+        }
+
+        // === GENERIC FOOD KEYWORDS ===
+        // If we detect any food-related words, build a general cooking recipe
+        let foodKeywords = ["recipe", "cook", "food", "dish", "meal", "kitchen", "ingredient",
+                            "delicious", "tasty", "yummy", "homemade", "healthy", "dinner",
+                            "lunch", "breakfast", "snack", "khana", "sabzi", "roti"]
+
+        if foodKeywords.contains(where: { lower.contains($0) }) {
+            return Recipe(
+                name: "Recipe from Reel",
+                ingredients: [
+                    RecipeIngredient(genericName: "Oil", searchTerms: ["oil", "refined oil"]),
+                    RecipeIngredient(genericName: "Salt", searchTerms: ["salt"]),
+                    RecipeIngredient(genericName: "Butter", searchTerms: ["butter"]),
+                    RecipeIngredient(genericName: "Atta", searchTerms: ["atta", "wheat flour"]),
+                    RecipeIngredient(genericName: "Milk", searchTerms: ["milk"]),
+                    RecipeIngredient(genericName: "Eggs", searchTerms: ["eggs"]),
+                ]
             )
-        ]
-
-        for mapping in dishMappings {
-            if mapping.keywords.contains(where: { lowercased.contains($0) }) {
-                return Recipe(
-                    name: mapping.recipe,
-                    ingredients: mapping.ingredients.map { RecipeIngredient(genericName: $0.0, searchTerms: $0.1) }
-                )
-            }
         }
 
-        // No keyword match — return popular grocery staples so the page is never blank.
-        // Foundation Models would have handled specific content on iOS 26+.
+        // Absolute fallback — show popular grocery staples
         return Recipe(
             name: "Popular Groceries",
             ingredients: [
-                RecipeIngredient(genericName: "Milk",   searchTerms: Self.generateSearchTerms(for: "milk")),
-                RecipeIngredient(genericName: "Eggs",   searchTerms: Self.generateSearchTerms(for: "eggs")),
-                RecipeIngredient(genericName: "Bread",  searchTerms: Self.generateSearchTerms(for: "bread")),
-                RecipeIngredient(genericName: "Butter", searchTerms: Self.generateSearchTerms(for: "butter")),
-                RecipeIngredient(genericName: "Salt",   searchTerms: Self.generateSearchTerms(for: "salt"))
+                RecipeIngredient(genericName: "Milk", searchTerms: ["milk"]),
+                RecipeIngredient(genericName: "Bread", searchTerms: ["bread"]),
+                RecipeIngredient(genericName: "Eggs", searchTerms: ["eggs"]),
+                RecipeIngredient(genericName: "Butter", searchTerms: ["butter"]),
+                RecipeIngredient(genericName: "Salt", searchTerms: ["salt"]),
+                RecipeIngredient(genericName: "Oil", searchTerms: ["oil", "refined oil"]),
             ]
         )
     }
 
-    // MARK: - Search Term Generation Helper (used by FoundationModelsService)
+    // MARK: - Search Term Helper
 
     static func generateSearchTerms(for ingredient: String) -> [String] {
         let lower = ingredient.lowercased()
         var terms = [lower]
-
         let aliasMap: [String: [String]] = [
-            // Dairy & cooking staples
-            "paneer": ["paneer", "cottage cheese"],
-            "curd": ["curd", "dahi"],
-            "oil": ["oil", "refined oil"],
-            "ghee": ["ghee"],
-            "butter": ["butter"],
-            "milk": ["milk"],
-            "salt": ["salt"],
-            "rice": ["rice", "basmati"],
-            "dal": ["dal", "toor dal", "arhar"],
-            "atta": ["atta", "wheat flour"],
-            "bread": ["bread"],
-            "eggs": ["eggs"],
-            "ketchup": ["ketchup", "tomato sauce"],
-            // Packaged drinks
-            "coca cola": ["coke", "cola", "coca cola"],
-            "coke": ["coke", "cola", "coca cola"],
-            "sprite": ["sprite", "lemon drink"],
-            "thums up": ["thums up", "cola"],
-            "pepsi": ["pepsi", "cola"],
-            "juice": ["juice", "real", "mixed fruit"],
-            // Snacks & instant food
-            "chocolate": ["chocolate", "cadbury"],
-            "chips": ["chips", "lays"],
-            "noodles": ["noodles", "maggi"],
-            "maggi": ["maggi", "noodles"],
-            "kurkure": ["kurkure", "namkeen"],
-            "bhujia": ["bhujia", "haldiram", "namkeen"],
-            // Personal care
-            "soap": ["soap", "dove"],
-            "toothpaste": ["toothpaste", "colgate"],
-            "detergent": ["detergent", "surf excel"],
-            "jam": ["jam", "kissan"],
-            "sauce": ["ketchup", "sauce", "heinz"]
+            "paneer": ["paneer", "cottage cheese"], "curd": ["curd", "dahi"],
+            "oil": ["oil", "refined oil"], "ghee": ["ghee"], "butter": ["butter"],
+            "milk": ["milk"], "salt": ["salt"], "rice": ["rice", "basmati"],
+            "dal": ["dal", "toor dal", "arhar"], "atta": ["atta", "wheat flour"],
+            "bread": ["bread"], "eggs": ["eggs"], "ketchup": ["ketchup", "tomato sauce"],
+            "chocolate": ["chocolate", "cadbury"], "chips": ["chips", "lays"],
+            "noodles": ["noodles", "maggi"], "maggi": ["maggi", "noodles"],
         ]
-
         for (key, aliases) in aliasMap {
-            if lower.contains(key) {
-                terms.append(contentsOf: aliases)
-            }
+            if lower.contains(key) { terms.append(contentsOf: aliases) }
         }
         return Array(Set(terms))
     }

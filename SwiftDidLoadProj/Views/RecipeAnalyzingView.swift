@@ -7,13 +7,13 @@ struct RecipeAnalyzingView: View {
     let sharedURL: String
 
     @State private var currentStatusIndex = 0
-    @State private var hasError = false
+    @State private var extractedRecipe: Recipe? = nil
 
     let statuses = [
         "Opening Reel...",
-        "Reading Recipe...",
-        "Running Apple Intelligence...",
-        "Matching Ingredients...",
+        "Reading Page Content...",
+        "Identifying Ingredients...",
+        "Matching Products...",
         "Ready!"
     ]
 
@@ -38,16 +38,10 @@ struct RecipeAnalyzingView: View {
                         .scaleEffect(currentStatusIndex >= 4 ? 1.4 : 1.0)
                         .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: currentStatusIndex)
 
-                    if hasError {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundColor(.orange)
-                    } else {
-                        Image(systemName: currentStatusIndex >= 4 ? "checkmark" : "wand.and.stars")
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundColor(.white)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
+                    Image(systemName: currentStatusIndex >= 4 ? "checkmark" : "wand.and.stars")
+                        .font(.system(size: 40, weight: .bold))
+                        .foregroundColor(.white)
+                        .contentTransition(.symbolEffect(.replace))
                 }
 
                 Text("Recipe to Blinkit")
@@ -55,18 +49,12 @@ struct RecipeAnalyzingView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
 
-                if hasError {
-                    Text("Using best match...")
-                        .font(.headline)
-                        .foregroundColor(.orange.opacity(0.9))
-                } else {
-                    Text(statuses[min(currentStatusIndex, statuses.count - 1)])
-                        .font(.headline)
-                        .foregroundColor(.white.opacity(0.8))
-                        .transition(.opacity)
-                        .id(currentStatusIndex)
-                        .animation(.easeInOut(duration: 0.3), value: currentStatusIndex)
-                }
+                Text(statuses[min(currentStatusIndex, statuses.count - 1)])
+                    .font(.headline)
+                    .foregroundColor(.white.opacity(0.8))
+                    .transition(.opacity)
+                    .id(currentStatusIndex)
+                    .animation(.easeInOut(duration: 0.3), value: currentStatusIndex)
 
                 // Progress dots
                 HStack(spacing: 8) {
@@ -91,58 +79,37 @@ struct RecipeAnalyzingView: View {
             }
         }
         .onAppear {
-            runExtractionPipeline()
+            runPipeline()
         }
     }
 
-    private func runExtractionPipeline() {
+    private func runPipeline() {
         Task {
-            do {
-                // Step 1
-                await setStatus(0)
-                try await Task.sleep(for: .milliseconds(600))
+            // Step 1: Opening
+            withAnimation { currentStatusIndex = 0 }
+            try? await Task.sleep(for: .milliseconds(500))
 
-                // Step 2
-                await setStatus(1)
+            // Step 2: Reading — this is where the real network call happens
+            withAnimation { currentStatusIndex = 1 }
+            let recipe = await RecipeExtractionService.shared.extractRecipe(from: sharedURL)
 
-                // Real network call to oEmbed
-                let recipe = try await RecipeExtractionService.shared.extractRecipe(from: sharedURL)
+            // Step 3: Identifying
+            withAnimation { currentStatusIndex = 2 }
+            try? await Task.sleep(for: .milliseconds(600))
 
-                // Step 3
-                await setStatus(2)
-                try await Task.sleep(for: .milliseconds(700))
+            // Step 4: Matching
+            withAnimation { currentStatusIndex = 3 }
+            try? await Task.sleep(for: .milliseconds(500))
 
-                // Step 4
-                await setStatus(3)
-                try await Task.sleep(for: .milliseconds(500))
+            // Step 5: Done!
+            withAnimation { currentStatusIndex = 4 }
+            try? await Task.sleep(for: .milliseconds(500))
 
-                // Step 5 — Done!
-                await setStatus(4)
-                try await Task.sleep(for: .milliseconds(600))
-
-                // Deliver the real recipe
-                await MainActor.run {
-                    isPresented = false
-                    onRecipeExtracted(recipe)
-                }
-            } catch {
-                // Any error → fall back to mock
-                await MainActor.run {
-                    hasError = true
-                }
-                try? await Task.sleep(for: .seconds(1))
-                await MainActor.run {
-                    isPresented = false
-                    onRecipeExtracted(AppViewModel.mockRecipe)
-                }
+            // Deliver the recipe and dismiss
+            await MainActor.run {
+                isPresented = false
+                onRecipeExtracted(recipe)
             }
-        }
-    }
-
-    @MainActor
-    private func setStatus(_ index: Int) {
-        withAnimation {
-            currentStatusIndex = index
         }
     }
 }
