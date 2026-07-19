@@ -61,6 +61,7 @@ struct MoveItemContext: Identifiable {
 struct CartDetailView: View {
     let cartId: UUID
     @Environment(AppViewModel.self) var viewModel
+    @Environment(\.dismiss) private var dismissCartDetail
     
     @State private var selectedDonation: Int = 0
     @State private var showingCustomDonationAlert = false
@@ -69,6 +70,60 @@ struct CartDetailView: View {
     @State private var showingHistorySheet = false
     @State private var showingScannerSheet = false
     @State private var itemToMove: MoveItemContext? = nil
+    @State private var showingOrderPlacedSheet = false
+    
+    struct UserSplit: Identifiable {
+        let id = UUID()
+        let name: String
+        let amount: Int
+        let itemCount: Int
+        let percentage: Double
+    }
+    
+    private var userSplits: [UserSplit] {
+        guard let cart = cart, !cart.items.isEmpty else { return [] }
+        var totals: [String: Int] = [:]
+        var counts: [String: Int] = [:]
+        var userDisplayNames: [String: String] = [:]
+        var order: [String] = []
+        
+        let total = itemsTotal
+        
+        for item in cart.items {
+            let key = item.addedByUserId ?? item.addedByUserName ?? "Owner"
+            let rawName = item.addedByUserName ?? "Owner"
+            
+            if totals[key] == nil {
+                order.append(key)
+                userDisplayNames[key] = formattedUserName(rawName, userId: item.addedByUserId)
+            }
+            totals[key, default: 0] += item.price
+            counts[key, default: 0] += 1
+        }
+        
+        return order.map { key in
+            let name = userDisplayNames[key] ?? "Owner"
+            let userTotal = totals[key] ?? 0
+            let userCount = counts[key] ?? 0
+            let pct = total > 0 ? (Double(userTotal) / Double(total)) * 100.0 : 0.0
+            return UserSplit(name: name, amount: userTotal, itemCount: userCount, percentage: pct)
+        }
+    }
+    
+    private func formattedUserName(_ rawName: String, userId: String?) -> String {
+        if let session = viewModel.currentUserSession {
+            if (userId != nil && userId == session.userId) || rawName == session.email {
+                if let displayName = session.displayName, !displayName.isEmpty {
+                    return displayName
+                }
+            }
+        }
+        if rawName.contains("@") {
+            let prefix = rawName.components(separatedBy: "@").first ?? rawName
+            return prefix.capitalized
+        }
+        return rawName
+    }
     
     private var cart: Cart? {
         viewModel.carts.first { $0.id == cartId }
@@ -188,6 +243,18 @@ struct CartDetailView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingOrderPlacedSheet) {
+            if let cart = cart {
+                OrderPlacedView(
+                    cartName: cart.name,
+                    itemCount: cart.items.count,
+                    grandTotal: grandTotal,
+                    onDone: {
+                        dismissCartDetail()
+                    }
+                )
+            }
         }
         .toolbar {
             if let cart = cart {
@@ -510,6 +577,54 @@ struct CartDetailView: View {
             .background(Color.blue.opacity(0.1))
             .cornerRadius(6)
             .padding(.top, 4)
+            
+            // Member Split Breakdown - Only shown if shared and items were added by more than 1 user
+            if userSplits.count > 1 {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    HStack {
+                        Image(systemName: "person.2.fill")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.Colors.primary)
+                        Text("Bill Split by Member")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                        Spacer()
+                    }
+                    
+                    ForEach(userSplits) { split in
+                        HStack {
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.subheadline)
+                                    .foregroundColor(AppTheme.Colors.primary.opacity(0.8))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(split.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(AppTheme.Colors.textPrimary)
+                                    Text("\(split.itemCount) item\(split.itemCount == 1 ? "" : "s")")
+                                        .font(.caption2)
+                                        .foregroundColor(AppTheme.Colors.textSecondary)
+                                }
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("₹\(split.amount)")
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                Text("\(Int(split.percentage))% of bill")
+                                    .font(.caption2)
+                                    .foregroundColor(AppTheme.Colors.textSecondary)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
         }
         .padding()
         .background(Color(.systemBackground))
@@ -586,9 +701,11 @@ struct CartDetailView: View {
             Divider()
             HStack {
                 if isCartOwner {
-                    Button(action: {}) {
+                    Button(action: {
+                        showingOrderPlacedSheet = true
+                    }) {
                         HStack {
-                            Text("Select address at next step")
+                            Text("Order now")
                                 .font(.headline)
                                 .fontWeight(.bold)
                             Spacer()
@@ -1126,3 +1243,112 @@ struct MoveToCartSheet: View {
         .background(Color(.systemBackground))
     }
 }
+
+// MARK: - Order Placed Screen
+
+struct OrderPlacedView: View {
+    let cartName: String
+    let itemCount: Int
+    let grandTotal: Int
+    var onDone: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: AppTheme.Spacing.large) {
+            Spacer()
+            
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.primary.opacity(0.15))
+                    .frame(width: 130, height: 130)
+                
+                Circle()
+                    .fill(AppTheme.Colors.primary.opacity(0.25))
+                    .frame(width: 100, height: 100)
+                
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 70, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.primary)
+            }
+            .padding(.bottom, AppTheme.Spacing.medium)
+            
+            VStack(spacing: 8) {
+                Text("Order Placed!")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                
+                Text("Your grocery order for \(cartName) has been successfully placed.")
+                    .font(.subheadline)
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+            
+            VStack(spacing: 14) {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.fill")
+                            .foregroundColor(AppTheme.Colors.primary)
+                        Text("Delivery Estimate")
+                            .font(.subheadline)
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    Spacer()
+                    Text("14 minutes")
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                        .foregroundColor(AppTheme.Colors.primary)
+                }
+                
+                Divider()
+                
+                HStack {
+                    Text("Items Total")
+                        .font(.subheadline)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    Spacer()
+                    Text("\(itemCount) item\(itemCount == 1 ? "" : "s")")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                }
+                
+                HStack {
+                    Text("Grand Total")
+                        .font(.subheadline)
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                    Spacer()
+                    Text("₹\(grandTotal)")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+            .padding(.horizontal, 24)
+            .padding(.top, AppTheme.Spacing.medium)
+            
+            Spacer()
+            
+            Button(action: {
+                dismiss()
+                onDone?()
+            }) {
+                Text("Done")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(AppTheme.Colors.primary)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+    }
+}
+

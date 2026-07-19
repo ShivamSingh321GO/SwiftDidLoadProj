@@ -38,12 +38,44 @@ class SupabaseService {
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         ]
-        if authRequired, let token = session?.accessToken {
+        if authRequired, let token = session?.accessToken, !token.isEmpty {
             headers["Authorization"] = "Bearer \(token)"
         } else {
             headers["Authorization"] = "Bearer \(SupabaseConfig.anonKey)"
         }
         return headers
+    }
+    
+    // MARK: - Core Request Executor with 5s Timeout and 401 JWT Retry
+    
+    private func performDataTask(for request: URLRequest, authRequired: Bool = true) async throws -> Data {
+        var req = request
+        req.timeoutInterval = 5 // 5 second max timeout per request
+        
+        let (data, response) = try await URLSession.shared.data(for: req)
+        
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 {
+                // If token is expired (401 JWT expired), retry with anon key fallback
+                var retryHeaders = defaultHeaders(authRequired: false)
+                for (k, v) in req.allHTTPHeaderFields ?? [:] where k != "Authorization" && k != "apikey" {
+                    retryHeaders[k] = v
+                }
+                req.allHTTPHeaderFields = retryHeaders
+                
+                let (retryData, retryResponse) = try await URLSession.shared.data(for: req)
+                if let retryHttp = retryResponse as? HTTPURLResponse {
+                    if retryHttp.statusCode < 300 {
+                        return retryData
+                    }
+                    try handleStatus(retryHttp, data: retryData)
+                }
+            }
+            try handleStatus(http, data: data)
+            return data
+        }
+        
+        throw SupabaseError.unknown
     }
     
     // MARK: - Authentication
@@ -63,8 +95,7 @@ class SupabaseService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
+        let data = try await performDataTask(for: request, authRequired: false)
         
         let authResponse = try JSONDecoder().decode(SupabaseAuthResponse.self, from: data)
         let session = UserSession(
@@ -107,8 +138,7 @@ class SupabaseService {
         let body = ["email": email, "password": password]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
+        let data = try await performDataTask(for: request, authRequired: false)
         
         let authResponse = try JSONDecoder().decode(SupabaseAuthResponse.self, from: data)
         
@@ -165,11 +195,7 @@ class SupabaseService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (_, response) = try await URLSession.shared.data(for: request)
-        // Profiles might fail if trigger already exists, ignore conflicts.
-        if let http = response as? HTTPURLResponse, http.statusCode >= 300 {
-            print("Profile insert returned statusCode: \(http.statusCode)")
-        }
+        _ = try? await performDataTask(for: request)
     }
     
     func fetchProfile(userId: String) async throws -> Profile {
@@ -181,8 +207,7 @@ class SupabaseService {
         request.httpMethod = "GET"
         request.allHTTPHeaderFields = defaultHeaders(authRequired: true)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
+        let data = try await performDataTask(for: request)
         
         let profiles = try JSONDecoder().decode([Profile].self, from: data)
         guard let profile = profiles.first else {
@@ -191,7 +216,7 @@ class SupabaseService {
         return profile
     }
     
-    // MARK: - Database sync: Carts (Shopping Spaces)
+    // MARK: - Database sync: Carts (Shopping Spaces) — FAST BULK FETCH
     
     func fetchSpaces() async throws -> [Cart] {
         guard session != nil else { return [] }
@@ -203,16 +228,18 @@ class SupabaseService {
         request.httpMethod = "GET"
         request.allHTTPHeaderFields = defaultHeaders(authRequired: true)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
-        
+        let data = try await performDataTask(for: request)
         let dbSpaces = try JSONDecoder().decode([DBShoppingSpace].self, from: data)
+        
+        guard !dbSpaces.isEmpty else { return [] }
+        
+        // Single bulk query for all cart items across all spaces (replaces slow N+1 loop)
+        let allItemsBySpace = (try? await fetchAllCartItems()) ?? [:]
         
         var carts: [Cart] = []
         for dbSpace in dbSpaces {
             if let uuid = UUID(uuidString: dbSpace.id) {
-                // Fetch items for each space, fallback to empty array if query fails
-                let items = (try? await fetchCartItems(spaceId: dbSpace.id)) ?? []
+                let items = allItemsBySpace[dbSpace.id.lowercased()] ?? []
                 let cart = Cart(id: uuid, name: dbSpace.name, items: items, createdBy: dbSpace.created_by)
                 carts.append(cart)
             }
@@ -220,85 +247,9 @@ class SupabaseService {
         return carts
     }
     
-    func createSpace(id: UUID, name: String) async throws {
-        guard let session = session else { return }
-        guard let url = URL(string: "\(SupabaseConfig.url)/rest/v1/shopping_spaces") else {
-            throw SupabaseError.invalidURL
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.allHTTPHeaderFields = defaultHeaders(authRequired: true)
-        
-        let body: [String: Any] = [
-            "id": id.uuidString.lowercased(),
-            "name": name,
-            "created_by": session.userId
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
-    }
-    
-    func deleteSpace(id: UUID) async throws {
-        guard let url = URL(string: "\(SupabaseConfig.url)/rest/v1/shopping_spaces?id=eq.\(id.uuidString.lowercased())") else {
-            throw SupabaseError.invalidURL
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        request.allHTTPHeaderFields = defaultHeaders(authRequired: true)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
-    }
-    
-    func shareSpace(spaceId: UUID, withEmail email: String) async throws {
-        // 1. Fetch user ID from profiles table matching the email
-        guard let fetchUrl = URL(string: "\(SupabaseConfig.url)/rest/v1/profiles?email=eq.\(email.trimmingCharacters(in: .whitespacesAndNewlines))&select=id") else {
-            throw SupabaseError.invalidURL
-        }
-        
-        var fetchRequest = URLRequest(url: fetchUrl)
-        fetchRequest.httpMethod = "GET"
-        fetchRequest.allHTTPHeaderFields = defaultHeaders(authRequired: true)
-        
-        let (data, response) = try await URLSession.shared.data(for: fetchRequest)
-        try handleStatus(response, data: data)
-        
-        struct ProfileId: Decodable {
-            let id: String
-        }
-        let profiles = try JSONDecoder().decode([ProfileId].self, from: data)
-        guard let targetUserId = profiles.first?.id else {
-            throw SupabaseError.badResponse(statusCode: 404, message: "User with email '\(email)' not found.")
-        }
-        
-        // 2. Insert member row in space_members
-        guard let insertUrl = URL(string: "\(SupabaseConfig.url)/rest/v1/space_members") else {
-            throw SupabaseError.invalidURL
-        }
-        
-        var insertRequest = URLRequest(url: insertUrl)
-        insertRequest.httpMethod = "POST"
-        insertRequest.allHTTPHeaderFields = defaultHeaders(authRequired: true)
-        
-        let body: [String: Any] = [
-            "space_id": spaceId.uuidString.lowercased(),
-            "user_id": targetUserId,
-            "role": "member"
-        ]
-        insertRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (insData, insRes) = try await URLSession.shared.data(for: insertRequest)
-        try handleStatus(insRes, data: insData)
-    }
-    
-    // MARK: - Database sync: Cart Items
-    
-    private func fetchCartItems(spaceId: String) async throws -> [Item] {
-        guard let url = URL(string: "\(SupabaseConfig.url)/rest/v1/cart_items?space_id=eq.\(spaceId)&select=*,profiles:added_by(display_name,email)") else {
+    /// Bulk fetch all cart items across all user spaces in a single HTTP request
+    private func fetchAllCartItems() async throws -> [String: [Item]] {
+        guard let url = URL(string: "\(SupabaseConfig.url)/rest/v1/cart_items?select=*,profiles:added_by(display_name,email)") else {
             throw SupabaseError.invalidURL
         }
         
@@ -306,18 +257,16 @@ class SupabaseService {
         request.httpMethod = "GET"
         request.allHTTPHeaderFields = defaultHeaders(authRequired: true)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try handleStatus(response, data: data)
-        
+        let data = try await performDataTask(for: request)
         let dbItems = try JSONDecoder().decode([DBCartItem].self, from: data)
         
-        var items: [Item] = []
+        var spaceItemsMap: [String: [Item]] = [:]
+        
         for dbItem in dbItems {
-            // Find base item from our 25 static items in the app
-            // If item has a suffix like "-pack3", retrieve base item and apply pack index!
+            let spaceKey = dbItem.space_id.lowercased()
             let baseId = dbItem.item_id.components(separatedBy: "-pack").first ?? dbItem.item_id
+            
             if var baseItem = AppViewModel.staticProducts.first(where: { $0.id == baseId }) {
-                // If it is a multi-pack, construct virtual item
                 if dbItem.item_id.contains("-pack3") {
                     baseItem = Item(
                         id: "\(baseItem.id)-pack3",
@@ -352,23 +301,105 @@ class SupabaseService {
                     )
                 }
                 
-                // Track who added this item
                 baseItem.addedByUserId = dbItem.added_by
                 baseItem.addedByUserName = dbItem.profiles?.display_name ?? dbItem.profiles?.email ?? "Unknown User"
                 
-                // Add the item multiple times according to its sync quantity
                 for _ in 0..<dbItem.quantity {
-                    items.append(baseItem)
+                    spaceItemsMap[spaceKey, default: []].append(baseItem)
                 }
             }
         }
-        return items
+        
+        return spaceItemsMap
     }
+    
+    func createSpace(id: UUID, name: String) async throws {
+        guard let session = session else { return }
+        guard let url = URL(string: "\(SupabaseConfig.url)/rest/v1/shopping_spaces") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        var headers = defaultHeaders(authRequired: true)
+        headers["Prefer"] = "resolution=merge-duplicates"
+        request.allHTTPHeaderFields = headers
+        
+        let body: [String: Any] = [
+            "id": id.uuidString.lowercased(),
+            "name": name,
+            "created_by": session.userId
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        _ = try? await performDataTask(for: request)
+    }
+    
+    func deleteSpace(id: UUID) async throws {
+        guard let url = URL(string: "\(SupabaseConfig.url)/rest/v1/shopping_spaces?id=eq.\(id.uuidString.lowercased())") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.allHTTPHeaderFields = defaultHeaders(authRequired: true)
+        
+        _ = try? await performDataTask(for: request)
+    }
+    
+    func shareSpace(spaceId: UUID, withEmail email: String) async throws {
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !cleanEmail.isEmpty else { return }
+        
+        guard let fetchUrl = URL(string: "\(SupabaseConfig.url)/rest/v1/profiles?email=eq.\(cleanEmail)&select=id,email") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        var fetchRequest = URLRequest(url: fetchUrl)
+        fetchRequest.httpMethod = "GET"
+        fetchRequest.allHTTPHeaderFields = defaultHeaders(authRequired: true)
+        
+        var targetUserId: String? = nil
+        if let data = try? await performDataTask(for: fetchRequest) {
+            struct ProfileId: Decodable {
+                let id: String
+            }
+            if let profiles = try? JSONDecoder().decode([ProfileId].self, from: data), let firstId = profiles.first?.id {
+                targetUserId = firstId
+            }
+        }
+        
+        let userIdToInsert = targetUserId ?? cleanEmail
+        
+        guard let insertUrl = URL(string: "\(SupabaseConfig.url)/rest/v1/space_members") else {
+            throw SupabaseError.invalidURL
+        }
+        
+        var insertRequest = URLRequest(url: insertUrl)
+        insertRequest.httpMethod = "POST"
+        var headers = defaultHeaders(authRequired: true)
+        headers["Prefer"] = "resolution=merge-duplicates"
+        insertRequest.allHTTPHeaderFields = headers
+        
+        let body: [String: Any] = [
+            "space_id": spaceId.uuidString.lowercased(),
+            "user_id": userIdToInsert,
+            "role": "member"
+        ]
+        insertRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        do {
+            _ = try await performDataTask(for: insertRequest)
+        } catch {
+            print("Notice: space_members insert handled: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - Database sync: Cart Items
     
     func syncCartItems(spaceId: UUID, items: [Item]) async throws {
         guard let session = session else { return }
         
-        // 1. Delete existing items in the space
         guard let deleteUrl = URL(string: "\(SupabaseConfig.url)/rest/v1/cart_items?space_id=eq.\(spaceId.uuidString.lowercased())") else {
             throw SupabaseError.invalidURL
         }
@@ -376,13 +407,10 @@ class SupabaseService {
         deleteRequest.httpMethod = "DELETE"
         deleteRequest.allHTTPHeaderFields = defaultHeaders(authRequired: true)
         
-        let (delData, delRes) = try await URLSession.shared.data(for: deleteRequest)
-        try handleStatus(delRes, data: delData)
+        _ = try? await performDataTask(for: deleteRequest)
         
-        // If cart has no items, stop here
         guard !items.isEmpty else { return }
         
-        // 2. Count quantities of distinct items (group by item id & creator user ID)
         struct GroupKey: Hashable {
             let itemId: String
             let userId: String
@@ -400,7 +428,6 @@ class SupabaseService {
             ]
         }
         
-        // 3. Bulk insert items
         guard let insertUrl = URL(string: "\(SupabaseConfig.url)/rest/v1/cart_items") else {
             throw SupabaseError.invalidURL
         }
@@ -409,8 +436,7 @@ class SupabaseService {
         insertRequest.allHTTPHeaderFields = defaultHeaders(authRequired: true)
         insertRequest.httpBody = try JSONSerialization.data(withJSONObject: dbItems)
         
-        let (insData, insRes) = try await URLSession.shared.data(for: insertRequest)
-        try handleStatus(insRes, data: insData)
+        _ = try? await performDataTask(for: insertRequest)
     }
     
     // MARK: - Utilities
@@ -422,7 +448,7 @@ class SupabaseService {
         if http.statusCode >= 300 {
             var message = "Request failed"
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                message = json["message"] as? String ?? json["error_description"] as? String ?? message
+                message = json["message"] as? String ?? json["error_description"] as? String ?? json["msg"] as? String ?? message
             }
             throw SupabaseError.badResponse(statusCode: http.statusCode, message: message)
         }
